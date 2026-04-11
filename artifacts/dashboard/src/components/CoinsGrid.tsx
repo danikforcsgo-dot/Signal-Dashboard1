@@ -1,13 +1,42 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useGetCoins } from "@workspace/api-client-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, TrendingUp, TrendingDown, Eye, EyeOff } from "lucide-react";
+import { CheckCircle2, TrendingUp, TrendingDown, Eye, EyeOff, X } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+
+const HIDDEN_KEY = "hidden_coin_ids";
+
+function loadHiddenCoins(): Set<string> {
+  try {
+    const raw = localStorage.getItem(HIDDEN_KEY);
+    if (raw) return new Set(JSON.parse(raw) as string[]);
+  } catch {}
+  return new Set();
+}
+
+function saveHiddenCoins(set: Set<string>) {
+  localStorage.setItem(HIDDEN_KEY, JSON.stringify([...set]));
+}
 
 export function CoinsGrid() {
   const { data } = useGetCoins({ query: { refetchInterval: 10000 } });
   const [showSignaled, setShowSignaled] = useState(false);
+  const [hiddenCoins, setHiddenCoins] = useState<Set<string>>(loadHiddenCoins);
+
+  const hideCoín = useCallback((instId: string) => {
+    setHiddenCoins(prev => {
+      const next = new Set(prev);
+      next.add(instId);
+      saveHiddenCoins(next);
+      return next;
+    });
+  }, []);
+
+  const restoreHidden = useCallback(() => {
+    setHiddenCoins(new Set());
+    saveHiddenCoins(new Set());
+  }, []);
 
   if (!data) {
     return (
@@ -28,7 +57,9 @@ export function CoinsGrid() {
 
   const signaledCoins = allCoins.filter(c => c.signalSentHigh || c.signalSentLow);
   const activeCoins = allCoins.filter(c => !c.signalSentHigh && !c.signalSentLow);
-  const visibleCoins = showSignaled ? allCoins : activeCoins;
+  const baseCoins = showSignaled ? allCoins : activeCoins;
+  const visibleCoins = baseCoins.filter(c => !hiddenCoins.has(c.instId));
+  const manuallyHiddenCount = baseCoins.filter(c => hiddenCoins.has(c.instId)).length;
 
   return (
     <div>
@@ -39,6 +70,14 @@ export function CoinsGrid() {
             <span><span className="text-primary font-bold">{signaledCoins.length}</span> отработали</span>
           )}
           <span>из {allCoins.length}</span>
+          {manuallyHiddenCount > 0 && (
+            <button
+              className="text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
+              onClick={restoreHidden}
+            >
+              +{manuallyHiddenCount} скрыто
+            </button>
+          )}
         </div>
 
         {signaledCoins.length > 0 && (
@@ -64,8 +103,17 @@ export function CoinsGrid() {
             <Card
               key={coin.instId}
               data-testid={`card-coin-${coin.instId}`}
-              className={`p-2 border-border bg-card hover:border-primary/40 transition-colors flex flex-col gap-1.5 ${isSignaled ? 'opacity-50' : ''}`}
+              className={`relative p-2 border-border bg-card hover:border-primary/40 transition-colors flex flex-col gap-1.5 group ${isSignaled ? 'opacity-50' : ''}`}
             >
+              {/* Hide button — appears on hover */}
+              <button
+                className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground z-10"
+                onClick={() => hideCoín(coin.instId)}
+                title="Скрыть"
+              >
+                <X size={10} />
+              </button>
+
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1 min-w-0">
                   <span className="font-bold text-[11px] truncate leading-tight">
@@ -82,7 +130,7 @@ export function CoinsGrid() {
                     </Tooltip>
                   )}
                 </div>
-                <div className="text-right flex-shrink-0">
+                <div className="text-right flex-shrink-0 pr-3">
                   <div className="font-mono text-[10px] leading-tight">{coin.currentPrice < 1 ? coin.currentPrice.toFixed(5) : coin.currentPrice.toFixed(2)}</div>
                   <div className="font-mono text-[9px] text-neon-green leading-tight">{coin.adrPct.toFixed(1)}%</div>
                 </div>
@@ -130,7 +178,7 @@ export function CoinsGrid() {
 
         {visibleCoins.length === 0 && (
           <div className="col-span-6 py-10 text-center text-muted-foreground font-mono text-[10px]">
-            Все монеты отработали на сегодня. Сброс в 00:00 UTC (03:00 МСК)
+            Все монеты скрыты или отработали. Сброс в 00:00 UTC (03:00 МСК)
           </div>
         )}
       </div>
