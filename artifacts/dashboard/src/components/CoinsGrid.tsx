@@ -185,9 +185,15 @@ export function CoinsGrid() {
               {/* Header */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1 min-w-0">
-                  <span className="font-bold text-[11px] truncate leading-tight">
+                  <a
+                    href={getTradingViewUrl(coin.instId)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-bold text-[11px] truncate leading-tight hover:text-primary transition-colors"
+                    onClick={e => e.stopPropagation()}
+                  >
                     {coin.symbol.replace("/USDT.P", "")}
-                  </span>
+                  </a>
                   {isSignaled && (
                     <Tooltip>
                       <TooltipTrigger>
@@ -260,37 +266,25 @@ export function CoinsGrid() {
                 </span>
               </div>
 
-              {/* Footer — static info + hover links */}
+              {/* Footer — volume + OKX link */}
               <div className="border-t border-border pt-1">
-                {/* Static: volume + ADR HIGH level */}
-                <div className="text-[9px] font-mono text-muted-foreground flex justify-between group-hover:opacity-0 transition-opacity">
+                <div className="text-[9px] font-mono text-muted-foreground flex justify-between items-center">
                   <span>{(coin.volume24h / 1_000_000).toFixed(0)}M</span>
-                  <span className="truncate">
-                    {coin.adrHighLevel < 1 ? coin.adrHighLevel.toFixed(4) : coin.adrHighLevel.toFixed(2)}
-                  </span>
-                </div>
-                {/* On hover: TradingView + OKX links */}
-                <div className="absolute bottom-2 left-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-                  <a
-                    href={getTradingViewUrl(coin.instId)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex-1 flex items-center justify-center gap-0.5 text-[9px] font-mono bg-muted/80 hover:bg-primary/20 hover:text-primary border border-border rounded px-1 py-0.5 transition-colors truncate"
-                    title={`TradingView · ${coin.symbol}`}
-                    onClick={e => e.stopPropagation()}
-                  >
-                    📈 <span className="hidden sm:inline">TV</span>
-                  </a>
-                  <a
-                    href={getOkxUrl(coin.instId)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex-1 flex items-center justify-center gap-0.5 text-[9px] font-mono bg-muted/80 hover:bg-amber-500/20 hover:text-amber-400 border border-border rounded px-1 py-0.5 transition-colors truncate"
-                    title={`OKX · ${coin.symbol}`}
-                    onClick={e => e.stopPropagation()}
-                  >
-                    🏦 <span className="hidden sm:inline">OKX</span>
-                  </a>
+                  <div className="flex items-center gap-2">
+                    <a
+                      href={getOkxUrl(coin.instId)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="hover:text-amber-400 transition-colors"
+                      title={`OKX · ${coin.symbol}`}
+                      onClick={e => e.stopPropagation()}
+                    >
+                      OKX
+                    </a>
+                    <span className="truncate">
+                      {coin.adrHighLevel < 1 ? coin.adrHighLevel.toFixed(4) : coin.adrHighLevel.toFixed(2)}
+                    </span>
+                  </div>
                 </div>
               </div>
             </Card>
