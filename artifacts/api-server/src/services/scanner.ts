@@ -43,6 +43,8 @@ const EXCLUDED_INST_IDS = new Set([
   "EWJ-USDT-SWAP",   // Japan ETF
   "EWY-USDT-SWAP",   // Korea ETF
   "USDC-USDT-SWAP",  // Stablecoin
+  "CRCL-USDT-SWAP",  // Circle stock
+  "CRWV-USDT-SWAP",  // CoreWeave stock
 ]);
 
 // Volume spike thresholds
