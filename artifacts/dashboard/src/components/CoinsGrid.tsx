@@ -5,6 +5,17 @@ import { Button } from "@/components/ui/button";
 import { CheckCircle2, TrendingUp, TrendingDown, Eye, EyeOff, X } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
+function getTradingViewUrl(instId: string): string {
+  // "GIGGLE-USDT-SWAP" → "OKX:GIGGLEUSDT.P"
+  const base = instId.replace("-USDT-SWAP", "");
+  return `https://www.tradingview.com/chart/?symbol=OKX:${base}USDT.P`;
+}
+
+function getOkxUrl(instId: string): string {
+  // "GIGGLE-USDT-SWAP" → "https://www.okx.com/ru/trade-swap/giggle-usdt-swap"
+  return `https://www.okx.com/ru/trade-swap/${instId.toLowerCase()}`;
+}
+
 const HIDDEN_KEY = "hidden_coin_ids";
 
 function loadHiddenCoins(): Set<string> {
@@ -187,12 +198,38 @@ export function CoinsGrid() {
                 </span>
               </div>
 
-              {/* Footer */}
-              <div className="text-[9px] font-mono text-muted-foreground border-t border-border pt-1 flex justify-between">
-                <span>{(coin.volume24h / 1_000_000).toFixed(0)}M</span>
-                <span className="truncate">
-                  {coin.adrHighLevel < 1 ? coin.adrHighLevel.toFixed(4) : coin.adrHighLevel.toFixed(2)}
-                </span>
+              {/* Footer — static info + hover links */}
+              <div className="border-t border-border pt-1">
+                {/* Static: volume + ADR HIGH level */}
+                <div className="text-[9px] font-mono text-muted-foreground flex justify-between group-hover:opacity-0 transition-opacity">
+                  <span>{(coin.volume24h / 1_000_000).toFixed(0)}M</span>
+                  <span className="truncate">
+                    {coin.adrHighLevel < 1 ? coin.adrHighLevel.toFixed(4) : coin.adrHighLevel.toFixed(2)}
+                  </span>
+                </div>
+                {/* On hover: TradingView + OKX links */}
+                <div className="absolute bottom-2 left-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                  <a
+                    href={getTradingViewUrl(coin.instId)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 flex items-center justify-center gap-0.5 text-[9px] font-mono bg-muted/80 hover:bg-primary/20 hover:text-primary border border-border rounded px-1 py-0.5 transition-colors truncate"
+                    title={`TradingView · ${coin.symbol}`}
+                    onClick={e => e.stopPropagation()}
+                  >
+                    📈 <span className="hidden sm:inline">TV</span>
+                  </a>
+                  <a
+                    href={getOkxUrl(coin.instId)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 flex items-center justify-center gap-0.5 text-[9px] font-mono bg-muted/80 hover:bg-amber-500/20 hover:text-amber-400 border border-border rounded px-1 py-0.5 transition-colors truncate"
+                    title={`OKX · ${coin.symbol}`}
+                    onClick={e => e.stopPropagation()}
+                  >
+                    🏦 <span className="hidden sm:inline">OKX</span>
+                  </a>
+                </div>
               </div>
             </Card>
           );
