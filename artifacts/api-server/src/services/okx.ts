@@ -132,6 +132,53 @@ export function computeADR(candles: OKXCandle[], currentPrice: number): CoinADRD
   };
 }
 
+export interface VolumeSpikeData {
+  instId: string;
+  symbol: string;
+  currentPrice: number;
+  volume5m: number;
+  avgVolume5m: number;
+  spikeRatio: number;
+  priceChange5m: number;
+  volume24h: number;
+}
+
+export async function fetch5mCandles(instId: string, limit = 22): Promise<OKXCandle[]> {
+  const data = await fetchOKX(`/api/v5/market/candles?instId=${instId}&bar=5m&limit=${limit}`) as string[][];
+  return data.map(c => ({
+    ts: c[0], open: c[1], high: c[2], low: c[3], close: c[4],
+    vol: c[5], volCcy: c[6], volCcyQuote: c[7], confirm: c[8],
+  }));
+}
+
+export async function fetchVolumeSpikeData(instId: string, currentPrice: number, volume24h: number): Promise<VolumeSpikeData | null> {
+  try {
+    const candles = await fetch5mCandles(instId, 22);
+    // candles[0] = forming (skip), candles[1] = last completed, candles[2..19] = history (90 min)
+    if (candles.length < 20) return null;
+
+    const lastCandle = candles[1];
+    const historyCandles = candles.slice(2, 20);
+
+    const volume5m = parseFloat(lastCandle.volCcyQuote);
+    const avgVolume5m = historyCandles.reduce((sum, c) => sum + parseFloat(c.volCcyQuote), 0) / historyCandles.length;
+
+    if (avgVolume5m === 0) return null;
+
+    const spikeRatio = volume5m / avgVolume5m;
+    const open5m = parseFloat(lastCandle.open);
+    const close5m = parseFloat(lastCandle.close);
+    const priceChange5m = open5m > 0 ? ((close5m - open5m) / open5m) * 100 : 0;
+
+    const symbol = instId.replace("-USDT-SWAP", "") + "/USDT.P";
+
+    return { instId, symbol, currentPrice, volume5m, avgVolume5m, spikeRatio, priceChange5m, volume24h };
+  } catch (err) {
+    logger.debug({ err, instId }, "Failed to fetch 5m candles");
+    return null;
+  }
+}
+
 export async function fetchCoinADRData(instId: string, currentPrice: number, volume24h: number): Promise<CoinADRData | null> {
   try {
     const candles = await fetchDailyCandles(instId);

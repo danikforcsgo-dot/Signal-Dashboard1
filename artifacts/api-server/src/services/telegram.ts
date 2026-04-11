@@ -1,5 +1,5 @@
 import { logger } from "../lib/logger";
-import type { CoinADRData } from "./okx";
+import type { CoinADRData, VolumeSpikeData } from "./okx";
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
@@ -110,6 +110,97 @@ export async function sendSignalMessage(coin: CoinADRData, signalType: "ADR_HIGH
     return result.message_id;
   } catch (err) {
     logger.error({ err, symbol: coin.symbol }, "Failed to send Telegram signal");
+    telegramConnected = false;
+    return null;
+  }
+}
+
+export async function sendVolumeSpikeMessage(data: VolumeSpikeData): Promise<number | null> {
+  if (!BOT_TOKEN || !CHAT_ID) return null;
+
+  const now = new Date();
+  const timeStr = now.toLocaleString("ru-RU", {
+    day: "2-digit", month: "2-digit", year: "numeric",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+    timeZone: "UTC",
+  }) + " UTC";
+
+  const direction = data.priceChange5m >= 0 ? "📈" : "📉";
+  const changeStr = (data.priceChange5m >= 0 ? "+" : "") + data.priceChange5m.toFixed(2) + "%";
+  const okxSlug = getOKXSlug(data.symbol);
+  const tvSymbol = getTVSymbol(data.instId);
+
+  const text = `🔊 ОБЪЁМ: ${data.symbol}
+Всплеск объёма за 5 мин × ${data.spikeRatio.toFixed(1)}x
+
+${direction} Цена: ${formatPrice(data.currentPrice)} USDT (${changeStr} за 5м)
+📊 Объём 5м: ${formatVolume(data.volume5m)} USDT
+📉 Средний 5м: ${formatVolume(data.avgVolume5m)} USDT
+📦 Объём 24ч: ${formatVolume(data.volume24h)} USDT
+⏰ ${timeStr}
+
+📈 TradingView · ${data.symbol} (https://www.tradingview.com/chart/?symbol=${tvSymbol})
+🏦 OKX · ${data.symbol} (https://www.okx.com/ru/trade-swap/${okxSlug})`;
+
+  try {
+    const result = await callTelegramAPI("sendMessage", {
+      chat_id: CHAT_ID,
+      text,
+      disable_web_page_preview: true,
+    }) as { message_id: number };
+    telegramConnected = true;
+    logger.info({ symbol: data.symbol, spikeRatio: data.spikeRatio }, "Volume spike sent to Telegram");
+    return result.message_id;
+  } catch (err) {
+    logger.error({ err, symbol: data.symbol }, "Failed to send volume spike");
+    telegramConnected = false;
+    return null;
+  }
+}
+
+export async function sendVolumeBreakoutMessage(data: VolumeSpikeData, adr: CoinADRData, direction: "HIGH" | "LOW"): Promise<number | null> {
+  if (!BOT_TOKEN || !CHAT_ID) return null;
+
+  const now = new Date();
+  const timeStr = now.toLocaleString("ru-RU", {
+    day: "2-digit", month: "2-digit", year: "numeric",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+    timeZone: "UTC",
+  }) + " UTC";
+
+  const isHigh = direction === "HIGH";
+  const emoji = isHigh ? "🚀" : "💥";
+  const levelLabel = isHigh ? "ADR HIGH" : "ADR LOW";
+  const level = isHigh ? adr.adrHighLevel : adr.adrLowLevel;
+  const arrow = isHigh ? "↑" : "↓";
+  const rangeProgress = adr.progressToHigh + adr.progressToLow;
+  const okxSlug = getOKXSlug(data.symbol);
+  const tvSymbol = getTVSymbol(data.instId);
+
+  const text = `${emoji} ПРОБОЙ ОБЪЁМА: ${data.symbol}
+Всплеск × ${data.spikeRatio.toFixed(1)}x + цена у уровня ${levelLabel} ${arrow}
+
+💰 Цена: ${formatPrice(data.currentPrice)} USDT
+🎯 ${levelLabel}: ${formatPrice(level)} USDT
+📊 ADR(14): ${adr.adrPct.toFixed(2)}% · Progress: ${rangeProgress.toFixed(0)}%
+📊 Объём 5м: ${formatVolume(data.volume5m)} USDT (× ${data.spikeRatio.toFixed(1)}x)
+📦 Объём 24ч: ${formatVolume(data.volume24h)} USDT
+⏰ ${timeStr}
+
+📈 TradingView · ${data.symbol} (https://www.tradingview.com/chart/?symbol=${tvSymbol})
+🏦 OKX · ${data.symbol} (https://www.okx.com/ru/trade-swap/${okxSlug})`;
+
+  try {
+    const result = await callTelegramAPI("sendMessage", {
+      chat_id: CHAT_ID,
+      text,
+      disable_web_page_preview: true,
+    }) as { message_id: number };
+    telegramConnected = true;
+    logger.info({ symbol: data.symbol, direction, spikeRatio: data.spikeRatio }, "Volume breakout sent to Telegram");
+    return result.message_id;
+  } catch (err) {
+    logger.error({ err, symbol: data.symbol }, "Failed to send volume breakout");
     telegramConnected = false;
     return null;
   }
