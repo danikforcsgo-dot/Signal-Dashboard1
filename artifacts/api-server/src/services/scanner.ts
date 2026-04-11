@@ -83,36 +83,41 @@ async function scanOnce(): Promise<void> {
         if (shouldResetSignals(existing?.signalSentHighAt ?? null)) signalSentHigh = false;
         if (shouldResetSignals(existing?.signalSentLowAt ?? null)) signalSentLow = false;
 
-        if (!signalSentHigh && adrData.progressToHigh >= SIGNAL_THRESHOLD) {
-          const msgId = await sendSignalMessage(adrData, "ADR_HIGH");
-          await db.insert(signalsTable).values({
-            instId: adrData.instId,
-            symbol: adrData.symbol,
-            signalType: "ADR_HIGH",
-            adrPct: adrData.adrPct,
-            price: adrData.currentPrice,
-            adrLevel: adrData.adrHighLevel,
-            progressPct: adrData.progressToHigh,
-            volume24h: adrData.volume24h,
-            telegramMsgId: msgId,
-          });
-          signalSentHigh = true;
-        }
+        // Combined range progress = progressToHigh + progressToLow
+        // = (todayHigh - todayLow) / ADR * 100  — same metric as TradingView "Current%"
+        const rangeProgress = adrData.progressToHigh + adrData.progressToLow;
+        const isHighDominant = adrData.progressToHigh >= adrData.progressToLow;
 
-        if (!signalSentLow && adrData.progressToLow >= SIGNAL_THRESHOLD) {
-          const msgId = await sendSignalMessage(adrData, "ADR_LOW");
-          await db.insert(signalsTable).values({
-            instId: adrData.instId,
-            symbol: adrData.symbol,
-            signalType: "ADR_LOW",
-            adrPct: adrData.adrPct,
-            price: adrData.currentPrice,
-            adrLevel: adrData.adrLowLevel,
-            progressPct: adrData.progressToLow,
-            volume24h: adrData.volume24h,
-            telegramMsgId: msgId,
-          });
-          signalSentLow = true;
+        if (rangeProgress >= SIGNAL_THRESHOLD) {
+          if (isHighDominant && !signalSentHigh) {
+            const msgId = await sendSignalMessage(adrData, "ADR_HIGH");
+            await db.insert(signalsTable).values({
+              instId: adrData.instId,
+              symbol: adrData.symbol,
+              signalType: "ADR_HIGH",
+              adrPct: adrData.adrPct,
+              price: adrData.currentPrice,
+              adrLevel: adrData.adrHighLevel,
+              progressPct: rangeProgress,
+              volume24h: adrData.volume24h,
+              telegramMsgId: msgId,
+            });
+            signalSentHigh = true;
+          } else if (!isHighDominant && !signalSentLow) {
+            const msgId = await sendSignalMessage(adrData, "ADR_LOW");
+            await db.insert(signalsTable).values({
+              instId: adrData.instId,
+              symbol: adrData.symbol,
+              signalType: "ADR_LOW",
+              adrPct: adrData.adrPct,
+              price: adrData.currentPrice,
+              adrLevel: adrData.adrLowLevel,
+              progressPct: rangeProgress,
+              volume24h: adrData.volume24h,
+              telegramMsgId: msgId,
+            });
+            signalSentLow = true;
+          }
         }
 
         await db.insert(coinStatesTable).values({

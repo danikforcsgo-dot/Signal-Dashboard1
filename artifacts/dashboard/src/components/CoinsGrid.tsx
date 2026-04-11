@@ -24,7 +24,7 @@ export function CoinsGrid() {
   const [showSignaled, setShowSignaled] = useState(false);
   const [hiddenCoins, setHiddenCoins] = useState<Set<string>>(loadHiddenCoins);
 
-  const hideCoín = useCallback((instId: string) => {
+  const hideCoin = useCallback((instId: string) => {
     setHiddenCoins(prev => {
       const next = new Set(prev);
       next.add(instId);
@@ -51,9 +51,11 @@ export function CoinsGrid() {
     );
   }
 
-  const allCoins = [...data.coins].sort((a, b) =>
-    Math.max(b.progressToHigh, b.progressToLow) - Math.max(a.progressToHigh, a.progressToLow)
-  );
+  const allCoins = [...data.coins].sort((a, b) => {
+    const rangeA = a.progressToHigh + a.progressToLow;
+    const rangeB = b.progressToHigh + b.progressToLow;
+    return rangeB - rangeA;
+  });
 
   const signaledCoins = allCoins.filter(c => c.signalSentHigh || c.signalSentLow);
   const activeCoins = allCoins.filter(c => !c.signalSentHigh && !c.signalSentLow);
@@ -99,6 +101,14 @@ export function CoinsGrid() {
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
         {visibleCoins.map((coin) => {
           const isSignaled = coin.signalSentHigh || coin.signalSentLow;
+          // Combined range progress = TradingView "Current%" metric
+          const rangeProgress = coin.progressToHigh + coin.progressToLow;
+          const isHighDominant = coin.progressToHigh >= coin.progressToLow;
+          const rangeBarWidth = Math.min(100, rangeProgress);
+          const rangeColor = isSignaled
+            ? 'bg-primary'
+            : isHighDominant ? 'bg-neon-green' : 'bg-neon-red';
+
           return (
             <Card
               key={coin.instId}
@@ -108,12 +118,13 @@ export function CoinsGrid() {
               {/* Hide button — appears on hover */}
               <button
                 className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground z-10"
-                onClick={() => hideCoín(coin.instId)}
+                onClick={() => hideCoin(coin.instId)}
                 title="Скрыть"
               >
                 <X size={10} />
               </button>
 
+              {/* Header */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1 min-w-0">
                   <span className="font-bold text-[11px] truncate leading-tight">
@@ -131,46 +142,57 @@ export function CoinsGrid() {
                   )}
                 </div>
                 <div className="text-right flex-shrink-0 pr-3">
-                  <div className="font-mono text-[10px] leading-tight">{coin.currentPrice < 1 ? coin.currentPrice.toFixed(5) : coin.currentPrice.toFixed(2)}</div>
-                  <div className="font-mono text-[9px] text-neon-green leading-tight">{coin.adrPct.toFixed(1)}%</div>
+                  <div className="font-mono text-[10px] leading-tight">
+                    {coin.currentPrice < 1 ? coin.currentPrice.toFixed(5) : coin.currentPrice.toFixed(2)}
+                  </div>
+                  <div className="font-mono text-[9px] text-muted-foreground leading-tight">{coin.adrPct.toFixed(1)}%</div>
                 </div>
               </div>
 
-              <div className="space-y-1">
-                <div>
-                  <div className="flex justify-between text-[9px] font-mono mb-0.5">
-                    <span className="text-muted-foreground flex items-center gap-0.5">
-                      <TrendingUp className="w-2.5 h-2.5 text-neon-green" /> H
-                    </span>
-                    <span className={coin.signalSentHigh ? "text-primary" : "text-neon-green"}>{coin.progressToHigh.toFixed(0)}%</span>
-                  </div>
-                  <div className="h-1 bg-muted rounded-full overflow-hidden">
-                    <div
-                      className={`h-full transition-all duration-500 ${coin.signalSentHigh ? 'bg-primary' : 'bg-neon-green'}`}
-                      style={{ width: `${Math.min(100, Math.max(0, coin.progressToHigh))}%` }}
-                    />
-                  </div>
+              {/* Combined range bar — mirrors TradingView "Current%" */}
+              <div>
+                <div className="flex justify-between text-[9px] font-mono mb-0.5">
+                  <span className="text-muted-foreground flex items-center gap-0.5">
+                    {isHighDominant
+                      ? <TrendingUp className="w-2.5 h-2.5 text-neon-green" />
+                      : <TrendingDown className="w-2.5 h-2.5 text-neon-red" />
+                    }
+                    {isHighDominant ? 'HIGH' : 'LOW'}
+                  </span>
+                  <span className={
+                    isSignaled ? "text-primary font-bold"
+                    : rangeProgress >= 95 ? (isHighDominant ? "text-neon-green font-bold" : "text-neon-red font-bold")
+                    : "text-foreground"
+                  }>
+                    {rangeProgress.toFixed(0)}%
+                  </span>
                 </div>
-
-                <div>
-                  <div className="flex justify-between text-[9px] font-mono mb-0.5">
-                    <span className="text-muted-foreground flex items-center gap-0.5">
-                      <TrendingDown className="w-2.5 h-2.5 text-neon-red" /> L
-                    </span>
-                    <span className={coin.signalSentLow ? "text-primary" : "text-neon-red"}>{coin.progressToLow.toFixed(0)}%</span>
-                  </div>
-                  <div className="h-1 bg-muted rounded-full overflow-hidden">
-                    <div
-                      className={`h-full transition-all duration-500 ${coin.signalSentLow ? 'bg-primary' : 'bg-neon-red'}`}
-                      style={{ width: `${Math.min(100, Math.max(0, coin.progressToLow))}%` }}
-                    />
-                  </div>
+                <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                  <div
+                    className={`h-full transition-all duration-500 ${rangeColor}`}
+                    style={{ width: `${rangeBarWidth}%` }}
+                  />
                 </div>
               </div>
 
+              {/* H / L breakdown */}
+              <div className="flex gap-2 text-[9px] font-mono text-muted-foreground">
+                <span className="flex items-center gap-0.5">
+                  <TrendingUp className="w-2 h-2 text-neon-green/60" />
+                  <span className="text-neon-green/80">{coin.progressToHigh.toFixed(0)}%</span>
+                </span>
+                <span className="flex items-center gap-0.5">
+                  <TrendingDown className="w-2 h-2 text-neon-red/60" />
+                  <span className="text-neon-red/80">{coin.progressToLow.toFixed(0)}%</span>
+                </span>
+              </div>
+
+              {/* Footer */}
               <div className="text-[9px] font-mono text-muted-foreground border-t border-border pt-1 flex justify-between">
                 <span>{(coin.volume24h / 1_000_000).toFixed(0)}M</span>
-                <span className="truncate">{coin.adrHighLevel < 1 ? coin.adrHighLevel.toFixed(4) : coin.adrHighLevel.toFixed(2)}</span>
+                <span className="truncate">
+                  {coin.adrHighLevel < 1 ? coin.adrHighLevel.toFixed(4) : coin.adrHighLevel.toFixed(2)}
+                </span>
               </div>
             </Card>
           );
