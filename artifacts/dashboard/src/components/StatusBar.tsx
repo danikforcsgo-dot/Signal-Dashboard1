@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Activity, Power, PowerOff, Send, Clock, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
+import { ResetTimer } from "@/components/ResetTimer";
 
 export function StatusBar() {
   const { data: status } = useGetStatus({ query: { refetchInterval: 10000 } });
@@ -76,6 +77,8 @@ export function StatusBar() {
       </div>
 
       <div className="flex items-center gap-4">
+        <ResetTimer />
+
         {status.lastScanAt && (
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-mono">
             <Clock className="w-3.5 h-3.5" />
