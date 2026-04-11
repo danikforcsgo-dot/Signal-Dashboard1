@@ -8,7 +8,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 const VOL_COOLDOWN_MS = 30 * 60 * 1000; // mirror server cooldown (30 min)
 
 interface VolBadge {
-  type: "VOL_SPIKE_UP" | "VOL_SPIKE_DOWN" | "VOL_BREAKOUT_HIGH" | "VOL_BREAKOUT_LOW";
+  type: "VOL_SPIKE_UP" | "VOL_SPIKE_DOWN" | "VOL_BREAKOUT_HIGH" | "VOL_BREAKOUT_LOW" | "VOL_SPIKE" | "VOL_BREAKOUT";
   ratio: number;
 }
 
@@ -22,6 +22,10 @@ function volBadgeStyle(type: VolBadge["type"]): { cls: string; icon: string; too
       return { cls: "bg-neon-green/20 text-neon-green border border-neon-green/40", icon: "🚀", tooltip: "Пробой объёма вверх (у ADR HIGH)" };
     case "VOL_BREAKOUT_LOW":
       return { cls: "bg-neon-red/20 text-neon-red border border-neon-red/40", icon: "🚀", tooltip: "Пробой объёма вниз (у ADR LOW)" };
+    case "VOL_SPIKE":
+      return { cls: "bg-blue-500/20 text-blue-400 border border-blue-400/30", icon: "🔊", tooltip: "Всплеск объёма" };
+    case "VOL_BREAKOUT":
+      return { cls: "bg-amber-500/20 text-amber-400 border border-amber-400/30", icon: "🚀", tooltip: "Пробой объёма" };
   }
 }
 
@@ -61,9 +65,13 @@ export function CoinsGrid() {
     const map = new Map<string, VolBadge>();
     if (!signalsData) return map;
     const cutoff = Date.now() - VOL_COOLDOWN_MS;
-    const volTypes = ["VOL_SPIKE_UP", "VOL_SPIKE_DOWN", "VOL_BREAKOUT_HIGH", "VOL_BREAKOUT_LOW"];
+    const volTypes = new Set([
+      "VOL_SPIKE_UP", "VOL_SPIKE_DOWN",
+      "VOL_BREAKOUT_HIGH", "VOL_BREAKOUT_LOW",
+      "VOL_SPIKE", "VOL_BREAKOUT", // legacy types (no direction)
+    ]);
     for (const s of signalsData.signals) {
-      if (!volTypes.includes(s.signalType)) continue;
+      if (!volTypes.has(s.signalType)) continue;
       if (new Date(s.sentAt).getTime() < cutoff) continue;
       const existing = map.get(s.instId);
       if (!existing || s.progressPct > existing.ratio) {
