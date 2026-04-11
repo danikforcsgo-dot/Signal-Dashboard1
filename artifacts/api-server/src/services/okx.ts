@@ -59,7 +59,7 @@ export async function fetchAllSwapTickers(): Promise<OKXTicker[]> {
 }
 
 export async function fetchDailyCandles(instId: string, limit = 17): Promise<OKXCandle[]> {
-  const data = await fetchOKX(`/api/v5/market/candles?instId=${instId}&bar=1D&limit=${limit}`) as string[][];
+  const data = await fetchOKX(`/api/v5/market/candles?instId=${instId}&bar=1Dutc&limit=${limit}`) as string[][];
   return data.map(c => ({
     ts: c[0],
     open: c[1],
