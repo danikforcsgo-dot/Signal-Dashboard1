@@ -1,22 +1,26 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Telegram Signal Bot API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: signals
+    description: Trading signals
+  - name: coins
+    description: Monitored coins
+  - name: status
+    description: System status
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +28,109 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /signals:
+    get:
+      operationId: getSignals
+      tags: [signals]
+      summary: Get recent signals
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: List of signals
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignalList"
+
+  /signals/stats:
+    get:
+      operationId: getSignalStats
+      tags: [signals]
+      summary: Get signal statistics
+      responses:
+        "200":
+          description: Signal stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignalStats"
+
+  /coins:
+    get:
+      operationId: getCoins
+      tags: [coins]
+      summary: Get all monitored coins with progress
+      responses:
+        "200":
+          description: List of coins
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoinList"
+
+  /status:
+    get:
+      operationId: getStatus
+      tags: [status]
+      summary: Get system status
+      responses:
+        "200":
+          description: System status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemStatus"
+
+  /bot/start:
+    post:
+      operationId: startBot
+      tags: [status]
+      summary: Start the scanner bot
+      responses:
+        "200":
+          description: Bot started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotActionResult"
+
+  /bot/stop:
+    post:
+      operationId: stopBot
+      tags: [status]
+      summary: Stop the scanner bot
+      responses:
+        "200":
+          description: Bot stopped
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotActionResult"
+
+  /bot/test:
+    post:
+      operationId: testBot
+      tags: [status]
+      summary: Send a test message to Telegram
+      responses:
+        "200":
+          description: Test sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotActionResult"
+
 components:
   schemas:
     HealthStatus:
@@ -31,6 +138,152 @@ components:
       properties:
         status:
           type: string
-      required:
-        - status
+      required: [status]
 
+    Signal:
+      type: object
+      properties:
+        id:
+          type: integer
+        instId:
+          type: string
+        symbol:
+          type: string
+        signalType:
+          type: string
+          enum: [ADR_HIGH, ADR_LOW]
+        adrPct:
+          type: number
+        price:
+          type: number
+        adrLevel:
+          type: number
+        progressPct:
+          type: number
+        volume24h:
+          type: number
+        sentAt:
+          type: string
+          format: date-time
+        telegramMsgId:
+          type: integer
+          nullable: true
+      required: [id, instId, symbol, signalType, adrPct, price, adrLevel, progressPct, volume24h, sentAt]
+
+    SignalList:
+      type: object
+      properties:
+        signals:
+          type: array
+          items:
+            $ref: "#/components/schemas/Signal"
+        total:
+          type: integer
+      required: [signals, total]
+
+    SignalStats:
+      type: object
+      properties:
+        totalSignals:
+          type: integer
+        signalsToday:
+          type: integer
+        signalsHigh:
+          type: integer
+        signalsLow:
+          type: integer
+        topCoins:
+          type: array
+          items:
+            type: object
+            properties:
+              symbol:
+                type: string
+              count:
+                type: integer
+            required: [symbol, count]
+      required: [totalSignals, signalsToday, signalsHigh, signalsLow, topCoins]
+
+    Coin:
+      type: object
+      properties:
+        instId:
+          type: string
+        symbol:
+          type: string
+        adrPct:
+          type: number
+        adrHighLevel:
+          type: number
+        adrLowLevel:
+          type: number
+        currentPrice:
+          type: number
+        progressToHigh:
+          type: number
+        progressToLow:
+          type: number
+        volume24h:
+          type: number
+        lastUpdated:
+          type: string
+          format: date-time
+        signalSentHigh:
+          type: boolean
+        signalSentLow:
+          type: boolean
+      required: [instId, symbol, adrPct, adrHighLevel, adrLowLevel, currentPrice, progressToHigh, progressToLow, volume24h, lastUpdated, signalSentHigh, signalSentLow]
+
+    CoinList:
+      type: object
+      properties:
+        coins:
+          type: array
+          items:
+            $ref: "#/components/schemas/Coin"
+        total:
+          type: integer
+        lastScanAt:
+          type: string
+          format: date-time
+          nullable: true
+      required: [coins, total]
+
+    SystemStatus:
+      type: object
+      properties:
+        botRunning:
+          type: boolean
+        scanIntervalSeconds:
+          type: integer
+        lastScanAt:
+          type: string
+          format: date-time
+          nullable: true
+        nextScanAt:
+          type: string
+          format: date-time
+          nullable: true
+        totalCoinsMonitored:
+          type: integer
+        okxConnected:
+          type: boolean
+        telegramConnected:
+          type: boolean
+        scanCount:
+          type: integer
+        errorCount:
+          type: integer
+        lastError:
+          type: string
+          nullable: true
+      required: [botRunning, scanIntervalSeconds, totalCoinsMonitored, okxConnected, telegramConnected, scanCount, errorCount]
+
+    BotActionResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+      required: [success, message]
