@@ -6,49 +6,41 @@ export function StatsRow() {
   const { data: stats } = useGetSignalStats({ query: { refetchInterval: 10000 } });
 
   if (!stats) {
-    return <div className="grid grid-cols-4 gap-4 h-24 animate-pulse bg-card/50" />;
+    return <div className="grid grid-cols-4 gap-2 h-14 animate-pulse bg-card/50" />;
   }
 
   return (
-    <div className="grid grid-cols-4 gap-4">
-      <Card className="p-4 flex flex-col justify-between border-border bg-card">
-        <div className="flex items-center justify-between text-muted-foreground">
-          <span className="text-xs font-bold tracking-wider">TOTAL SIGNALS</span>
-          <Activity className="w-4 h-4 opacity-50" />
+    <div className="grid grid-cols-4 gap-2">
+      <Card className="px-3 py-2 flex items-center justify-between border-border bg-card">
+        <div>
+          <div className="text-[10px] font-bold tracking-wider text-muted-foreground">TOTAL</div>
+          <div className="text-xl font-mono font-bold leading-tight">{stats.totalSignals}</div>
         </div>
-        <div className="text-3xl font-mono font-bold mt-2">
-          {stats.totalSignals.toLocaleString()}
-        </div>
+        <Activity className="w-4 h-4 opacity-20" />
       </Card>
 
-      <Card className="p-4 flex flex-col justify-between border-border bg-card">
-        <div className="flex items-center justify-between text-muted-foreground">
-          <span className="text-xs font-bold tracking-wider">TODAY'S SIGNALS</span>
-          <Target className="w-4 h-4 opacity-50" />
+      <Card className="px-3 py-2 flex items-center justify-between border-border bg-card">
+        <div>
+          <div className="text-[10px] font-bold tracking-wider text-muted-foreground">СЕГОДНЯ</div>
+          <div className="text-xl font-mono font-bold leading-tight text-primary">{stats.signalsToday}</div>
         </div>
-        <div className="text-3xl font-mono font-bold mt-2 text-primary">
-          {stats.signalsToday.toLocaleString()}
-        </div>
+        <Target className="w-4 h-4 opacity-20" />
       </Card>
 
-      <Card className="p-4 flex flex-col justify-between border-border bg-card">
-        <div className="flex items-center justify-between text-muted-foreground">
-          <span className="text-xs font-bold tracking-wider text-neon-green">ADR HIGH SIGNALS</span>
-          <ArrowUpRight className="w-4 h-4 text-neon-green opacity-50" />
+      <Card className="px-3 py-2 flex items-center justify-between border-border bg-card">
+        <div>
+          <div className="text-[10px] font-bold tracking-wider text-neon-green">ADR HIGH</div>
+          <div className="text-xl font-mono font-bold leading-tight text-neon-green">{stats.signalsHigh}</div>
         </div>
-        <div className="text-3xl font-mono font-bold mt-2 text-neon-green">
-          {stats.signalsHigh.toLocaleString()}
-        </div>
+        <ArrowUpRight className="w-4 h-4 text-neon-green opacity-30" />
       </Card>
 
-      <Card className="p-4 flex flex-col justify-between border-border bg-card">
-        <div className="flex items-center justify-between text-muted-foreground">
-          <span className="text-xs font-bold tracking-wider text-neon-red">ADR LOW SIGNALS</span>
-          <ArrowDownRight className="w-4 h-4 text-neon-red opacity-50" />
+      <Card className="px-3 py-2 flex items-center justify-between border-border bg-card">
+        <div>
+          <div className="text-[10px] font-bold tracking-wider text-neon-red">ADR LOW</div>
+          <div className="text-xl font-mono font-bold leading-tight text-neon-red">{stats.signalsLow}</div>
         </div>
-        <div className="text-3xl font-mono font-bold mt-2 text-neon-red">
-          {stats.signalsLow.toLocaleString()}
-        </div>
+        <ArrowDownRight className="w-4 h-4 text-neon-red opacity-30" />
       </Card>
     </div>
   );

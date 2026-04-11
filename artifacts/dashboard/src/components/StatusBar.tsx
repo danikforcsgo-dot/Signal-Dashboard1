@@ -15,114 +15,99 @@ export function StatusBar() {
 
   const handleStart = () => {
     startBot.mutate(undefined, {
-      onSuccess: () => toast({ title: "Bot started successfully" }),
-      onError: (err) => toast({ title: "Failed to start bot", variant: "destructive" }),
+      onSuccess: () => toast({ title: "Bot started" }),
+      onError: () => toast({ title: "Failed to start bot", variant: "destructive" }),
     });
   };
 
   const handleStop = () => {
     stopBot.mutate(undefined, {
-      onSuccess: () => toast({ title: "Bot stopped successfully" }),
-      onError: (err) => toast({ title: "Failed to stop bot", variant: "destructive" }),
+      onSuccess: () => toast({ title: "Bot stopped" }),
+      onError: () => toast({ title: "Failed to stop bot", variant: "destructive" }),
     });
   };
 
   const handleTest = () => {
     testBot.mutate(undefined, {
-      onSuccess: () => toast({ title: "Test message sent" }),
-      onError: (err) => toast({ title: "Failed to send test message", variant: "destructive" }),
+      onSuccess: () => toast({ title: "Test sent" }),
+      onError: () => toast({ title: "Failed to send", variant: "destructive" }),
     });
   };
 
   if (!status) {
-    return <div className="h-14 border-b border-border bg-card animate-pulse" />;
+    return <div className="h-9 border-b border-border bg-card animate-pulse" />;
   }
 
   return (
-    <div className="h-14 border-b border-border bg-card flex items-center justify-between px-6 sticky top-0 z-10">
-      <div className="flex items-center gap-6">
-        <div className="flex items-center gap-2">
-          <Activity className="w-5 h-5 text-primary" />
-          <span className="font-bold tracking-tight">SIGNAL TERMINAL</span>
+    <div className="h-9 border-b border-border bg-card flex items-center justify-between px-4 sticky top-0 z-10">
+      <div className="flex items-center gap-4">
+        <div className="flex items-center gap-1.5">
+          <Activity className="w-3.5 h-3.5 text-primary" />
+          <span className="font-bold text-xs tracking-tight">SIGNAL TERMINAL</span>
         </div>
-        
-        <div className="flex items-center gap-4 text-sm font-mono">
-          <div className="flex items-center gap-2">
+
+        <div className="flex items-center gap-3 text-[11px] font-mono">
+          <div className="flex items-center gap-1.5">
             <span className="text-muted-foreground">BOT:</span>
             {status.botRunning ? (
-              <Badge variant="outline" className="text-neon-green border-neon-green/20 bg-neon-green/10">RUNNING</Badge>
+              <Badge variant="outline" className="text-neon-green border-neon-green/20 bg-neon-green/10 text-[10px] py-0 h-4 px-1.5">RUNNING</Badge>
             ) : (
-              <Badge variant="outline" className="text-muted-foreground">STOPPED</Badge>
+              <Badge variant="outline" className="text-muted-foreground text-[10px] py-0 h-4 px-1.5">STOPPED</Badge>
             )}
           </div>
-          
-          <div className="flex items-center gap-2">
-            <span className="text-muted-foreground">OKX API:</span>
+
+          <div className="flex items-center gap-1.5">
+            <span className="text-muted-foreground">OKX:</span>
             {status.okxConnected ? (
-              <Badge variant="outline" className="text-neon-green border-neon-green/20 bg-neon-green/10">CONNECTED</Badge>
+              <Badge variant="outline" className="text-neon-green border-neon-green/20 bg-neon-green/10 text-[10px] py-0 h-4 px-1.5">OK</Badge>
             ) : (
-              <Badge variant="outline" className="text-destructive border-destructive/20 bg-destructive/10">DISCONNECTED</Badge>
+              <Badge variant="outline" className="text-destructive border-destructive/20 bg-destructive/10 text-[10px] py-0 h-4 px-1.5">ERR</Badge>
             )}
           </div>
-          
-          <div className="flex items-center gap-2">
-            <span className="text-muted-foreground">TELEGRAM:</span>
+
+          <div className="flex items-center gap-1.5">
+            <span className="text-muted-foreground">TG:</span>
             {status.telegramConnected ? (
-              <Badge variant="outline" className="text-neon-green border-neon-green/20 bg-neon-green/10">CONNECTED</Badge>
+              <Badge variant="outline" className="text-neon-green border-neon-green/20 bg-neon-green/10 text-[10px] py-0 h-4 px-1.5">OK</Badge>
             ) : (
-              <Badge variant="outline" className="text-destructive border-destructive/20 bg-destructive/10">DISCONNECTED</Badge>
+              <Badge variant="outline" className="text-destructive border-destructive/20 bg-destructive/10 text-[10px] py-0 h-4 px-1.5">ERR</Badge>
             )}
           </div>
         </div>
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
         <ResetTimer />
 
         {status.lastScanAt && (
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-mono">
-            <Clock className="w-3.5 h-3.5" />
-            Last Scan: {format(new Date(status.lastScanAt), "HH:mm:ss")}
-          </div>
-        )}
-        
-        {status.errorCount > 0 && (
-          <div className="flex items-center gap-1.5 text-xs text-destructive font-mono" title={status.lastError || "Errors occurred"}>
-            <AlertTriangle className="w-3.5 h-3.5" />
-            {status.errorCount} ERRORS
+          <div className="flex items-center gap-1 text-[10px] text-muted-foreground font-mono">
+            <Clock className="w-3 h-3" />
+            {format(new Date(status.lastScanAt), "HH:mm:ss")}
           </div>
         )}
 
-        <div className="flex items-center gap-2 pl-4 border-l border-border">
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={handleTest}
-            disabled={testBot.isPending}
-            className="font-mono text-xs"
-          >
-            <Send className="w-3.5 h-3.5 mr-1.5" /> TEST TG
+        {status.errorCount > 0 && (
+          <div className="flex items-center gap-1 text-[10px] text-destructive font-mono" title={status.lastError || ""}>
+            <AlertTriangle className="w-3 h-3" />
+            {status.errorCount} ERR
+          </div>
+        )}
+
+        <div className="flex items-center gap-1.5 pl-3 border-l border-border">
+          <Button variant="outline" size="sm" onClick={handleTest} disabled={testBot.isPending}
+            className="font-mono text-[10px] h-6 px-2 py-0">
+            <Send className="w-3 h-3 mr-1" /> TG
           </Button>
-          
+
           {status.botRunning ? (
-            <Button 
-              variant="destructive" 
-              size="sm" 
-              onClick={handleStop}
-              disabled={stopBot.isPending}
-              className="font-mono text-xs"
-            >
-              <PowerOff className="w-3.5 h-3.5 mr-1.5" /> STOP BOT
+            <Button variant="destructive" size="sm" onClick={handleStop} disabled={stopBot.isPending}
+              className="font-mono text-[10px] h-6 px-2 py-0">
+              <PowerOff className="w-3 h-3 mr-1" /> STOP
             </Button>
           ) : (
-            <Button 
-              variant="default" 
-              size="sm" 
-              onClick={handleStart}
-              disabled={startBot.isPending}
-              className="font-mono text-xs bg-neon-green text-black hover:bg-neon-green/90"
-            >
-              <Power className="w-3.5 h-3.5 mr-1.5" /> START BOT
+            <Button size="sm" onClick={handleStart} disabled={startBot.isPending}
+              className="font-mono text-[10px] h-6 px-2 py-0 bg-neon-green text-black hover:bg-neon-green/90">
+              <Power className="w-3 h-3 mr-1" /> START
             </Button>
           )}
         </div>
