@@ -94,8 +94,8 @@ export async function sendSignalMessage(coin: CoinADRData, signalType: "ADR_HIGH
 📦 Объём 24ч: ${formatVolume(coin.volume24h)} USDT
 ⏰ ${timeStr}
 
-📈 TradingView · ${coin.symbol} (https://www.tradingview.com/chart/?symbol=${tvSymbol})
-🏦 OKX · ${coin.symbol} (https://www.okx.com/ru/trade-swap/${okxSlug})`;
+📈 <a href="https://www.tradingview.com/chart/?symbol=${tvSymbol}">TradingView · ${coin.symbol}</a>
+🏦 <a href="https://www.okx.com/ru/trade-swap/${okxSlug}">OKX · ${coin.symbol}</a>`;
 
   try {
     const result = await callTelegramAPI("sendMessage", {
@@ -139,13 +139,14 @@ ${direction} Цена: ${formatPrice(data.currentPrice)} USDT (${changeStr} за
 📦 Объём 24ч: ${formatVolume(data.volume24h)} USDT
 ⏰ ${timeStr}
 
-📈 TradingView · ${data.symbol} (https://www.tradingview.com/chart/?symbol=${tvSymbol})
-🏦 OKX · ${data.symbol} (https://www.okx.com/ru/trade-swap/${okxSlug})`;
+📈 <a href="https://www.tradingview.com/chart/?symbol=${tvSymbol}">TradingView · ${data.symbol}</a>
+🏦 <a href="https://www.okx.com/ru/trade-swap/${okxSlug}">OKX · ${data.symbol}</a>`;
 
   try {
     const result = await callTelegramAPI("sendMessage", {
       chat_id: CHAT_ID,
       text,
+      parse_mode: "HTML",
       disable_web_page_preview: true,
     }) as { message_id: number };
     telegramConnected = true;
@@ -187,13 +188,14 @@ export async function sendVolumeBreakoutMessage(data: VolumeSpikeData, adr: Coin
 📦 Объём 24ч: ${formatVolume(data.volume24h)} USDT
 ⏰ ${timeStr}
 
-📈 TradingView · ${data.symbol} (https://www.tradingview.com/chart/?symbol=${tvSymbol})
-🏦 OKX · ${data.symbol} (https://www.okx.com/ru/trade-swap/${okxSlug})`;
+📈 <a href="https://www.tradingview.com/chart/?symbol=${tvSymbol}">TradingView · ${data.symbol}</a>
+🏦 <a href="https://www.okx.com/ru/trade-swap/${okxSlug}">OKX · ${data.symbol}</a>`;
 
   try {
     const result = await callTelegramAPI("sendMessage", {
       chat_id: CHAT_ID,
       text,
+      parse_mode: "HTML",
       disable_web_page_preview: true,
     }) as { message_id: number };
     telegramConnected = true;
