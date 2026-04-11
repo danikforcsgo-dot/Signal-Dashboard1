@@ -1,9 +1,16 @@
-import { useState, useCallback } from "react";
-import { useGetCoins } from "@workspace/api-client-react";
+import { useState, useCallback, useMemo } from "react";
+import { useGetCoins, useGetSignals } from "@workspace/api-client-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, TrendingUp, TrendingDown, Eye, EyeOff, X } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+
+const VOL_COOLDOWN_MS = 30 * 60 * 1000; // mirror server cooldown (30 min)
+
+interface VolBadge {
+  type: "VOL_SPIKE" | "VOL_BREAKOUT";
+  ratio: number;
+}
 
 function getTradingViewUrl(instId: string): string {
   // "GIGGLE-USDT-SWAP" → "OKX:GIGGLEUSDT.P"
@@ -32,8 +39,26 @@ function saveHiddenCoins(set: Set<string>) {
 
 export function CoinsGrid() {
   const { data } = useGetCoins({ query: { refetchInterval: 10000 } });
+  const { data: signalsData } = useGetSignals({ limit: 200 }, { query: { refetchInterval: 10000 } });
   const [showSignaled, setShowSignaled] = useState(false);
   const [hiddenCoins, setHiddenCoins] = useState<Set<string>>(loadHiddenCoins);
+
+  // Build map: instId → most recent volume badge (within last 30 min)
+  const volBadges = useMemo((): Map<string, VolBadge> => {
+    const map = new Map<string, VolBadge>();
+    if (!signalsData) return map;
+    const cutoff = Date.now() - VOL_COOLDOWN_MS;
+    for (const s of signalsData.signals) {
+      if (s.signalType !== "VOL_SPIKE" && s.signalType !== "VOL_BREAKOUT") continue;
+      if (new Date(s.sentAt).getTime() < cutoff) continue;
+      // Keep the highest ratio for each coin if multiple signals
+      const existing = map.get(s.instId);
+      if (!existing || s.progressPct > existing.ratio) {
+        map.set(s.instId, { type: s.signalType as VolBadge["type"], ratio: s.progressPct });
+      }
+    }
+    return map;
+  }, [signalsData]);
 
   const hideCoin = useCallback((instId: string) => {
     setHiddenCoins(prev => {
@@ -112,6 +137,7 @@ export function CoinsGrid() {
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
         {visibleCoins.map((coin) => {
           const isSignaled = coin.signalSentHigh || coin.signalSentLow;
+          const volBadge = volBadges.get(coin.instId);
           // Combined range progress = TradingView "Current%" metric
           const rangeProgress = coin.progressToHigh + coin.progressToLow;
           const isHighDominant = coin.progressToHigh >= coin.progressToLow;
@@ -148,6 +174,25 @@ export function CoinsGrid() {
                       </TooltipTrigger>
                       <TooltipContent side="top" className="text-[10px]">
                         Сигнал отправлен ({coin.signalSentHigh ? 'HIGH' : 'LOW'})
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                  {volBadge && (
+                    <Tooltip>
+                      <TooltipTrigger>
+                        <span className={`text-[9px] font-mono font-bold px-1 py-0 rounded leading-tight flex-shrink-0 ${
+                          volBadge.type === "VOL_BREAKOUT"
+                            ? "bg-amber-500/20 text-amber-400 border border-amber-400/30"
+                            : "bg-blue-500/20 text-blue-400 border border-blue-400/30"
+                        }`}>
+                          {volBadge.type === "VOL_BREAKOUT" ? "🚀" : "🔊"}{volBadge.ratio.toFixed(1)}x
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="text-[10px]">
+                        {volBadge.type === "VOL_BREAKOUT"
+                          ? `Пробой объёма × ${volBadge.ratio.toFixed(1)}x (цена у ADR уровня)`
+                          : `Всплеск объёма × ${volBadge.ratio.toFixed(1)}x за последние 30 мин`
+                        }
                       </TooltipContent>
                     </Tooltip>
                   )}
