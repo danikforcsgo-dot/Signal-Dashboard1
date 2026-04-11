@@ -58,7 +58,7 @@ export async function fetchAllSwapTickers(): Promise<OKXTicker[]> {
   return data.filter(t => t.instId.endsWith("-USDT-SWAP"));
 }
 
-export async function fetchDailyCandles(instId: string, limit = 15): Promise<OKXCandle[]> {
+export async function fetchDailyCandles(instId: string, limit = 17): Promise<OKXCandle[]> {
   const data = await fetchOKX(`/api/v5/market/candles?instId=${instId}&bar=1D&limit=${limit}`) as string[][];
   return data.map(c => ({
     ts: c[0],
@@ -74,39 +74,47 @@ export async function fetchDailyCandles(instId: string, limit = 15): Promise<OKX
 }
 
 export function computeADR(candles: OKXCandle[], currentPrice: number): CoinADRData | null {
-  if (candles.length < 15) return null;
-
+  // Need at least 14 confirmed candles + possibly 1 open candle
   const confirmedCandles = candles.filter(c => c.confirm === "1");
   if (confirmedCandles.length < 14) return null;
 
+  // Use the most recent 14 CONFIRMED (closed) daily candles for ADR calculation
   const last14 = confirmedCandles.slice(0, 14);
 
-  let adrPctSum = 0;
   let adrAbsSum = 0;
   for (const c of last14) {
     const h = parseFloat(c.high);
     const l = parseFloat(c.low);
     if (l === 0) continue;
     adrAbsSum += h - l;
-    adrPctSum += ((h - l) / l) * 100;
   }
 
   const adrAbsolute = adrAbsSum / 14;
-  const adrPct = adrPctSum / 14;
 
+  // prevClose = close of most recent completed daily bar
   const prevCandle = confirmedCandles[0];
   const prevClose = parseFloat(prevCandle.close);
 
   if (prevClose === 0 || adrAbsolute === 0) return null;
 
+  // ADR as % of prevClose (standard formula)
+  const adrPct = (adrAbsolute / prevClose) * 100;
+
   const adrHighLevel = prevClose + adrAbsolute;
   const adrLowLevel = prevClose - adrAbsolute;
 
+  // Use today's intraday HIGH/LOW (from the current open candle) for progress.
+  // This ensures we catch signals even if the price only briefly touched the level
+  // between 1-minute scans.
+  const openCandle = candles.find(c => c.confirm === "0");
+  const todayHigh = openCandle ? Math.max(parseFloat(openCandle.high), currentPrice) : currentPrice;
+  const todayLow  = openCandle ? Math.min(parseFloat(openCandle.low),  currentPrice) : currentPrice;
+
   const progressToHigh = Math.min(100, Math.max(0,
-    ((currentPrice - prevClose) / adrAbsolute) * 100
+    ((todayHigh - prevClose) / adrAbsolute) * 100
   ));
   const progressToLow = Math.min(100, Math.max(0,
-    ((prevClose - currentPrice) / adrAbsolute) * 100
+    ((prevClose - todayLow) / adrAbsolute) * 100
   ));
 
   return {
