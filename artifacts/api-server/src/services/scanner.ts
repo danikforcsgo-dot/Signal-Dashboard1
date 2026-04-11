@@ -182,9 +182,8 @@ async function scanOnce(): Promise<void> {
           const isPureSpike = spikeData.spikeRatio >= VOL_SPIKE_THRESHOLD;
 
           if (isBreakoutCombo && adrData) {
-            // Combo: volume spike + price near ADR level
+            // Combo: volume spike + price near ADR level — dashboard only, no Telegram
             const direction = adrData.progressToHigh >= adrData.progressToLow ? "HIGH" : "LOW";
-            const msgId = await sendVolumeBreakoutMessage(spikeData, adrData, direction);
             await db.insert(signalsTable).values({
               instId: spikeData.instId,
               symbol: spikeData.symbol,
@@ -194,13 +193,12 @@ async function scanOnce(): Promise<void> {
               adrLevel: direction === "HIGH" ? adrData.adrHighLevel : adrData.adrLowLevel,
               progressPct: Math.round(spikeData.spikeRatio * 10) / 10,
               volume24h: spikeData.volume24h,
-              telegramMsgId: msgId,
+              telegramMsgId: null,
             });
             volSpikeCooldowns.set(ticker.instId, Date.now());
-            logger.info({ symbol: spikeData.symbol, spikeRatio: spikeData.spikeRatio, direction }, "VOL_BREAKOUT signal");
+            logger.info({ symbol: spikeData.symbol, spikeRatio: spikeData.spikeRatio, direction }, "VOL_BREAKOUT signal (dashboard only)");
           } else if (isPureSpike) {
-            // Pure volume spike (no ADR proximity required)
-            const msgId = await sendVolumeSpikeMessage(spikeData);
+            // Pure volume spike — dashboard only, no Telegram
             await db.insert(signalsTable).values({
               instId: spikeData.instId,
               symbol: spikeData.symbol,
@@ -210,10 +208,10 @@ async function scanOnce(): Promise<void> {
               adrLevel: 0,
               progressPct: Math.round(spikeData.spikeRatio * 10) / 10,
               volume24h: spikeData.volume24h,
-              telegramMsgId: msgId,
+              telegramMsgId: null,
             });
             volSpikeCooldowns.set(ticker.instId, Date.now());
-            logger.info({ symbol: spikeData.symbol, spikeRatio: spikeData.spikeRatio }, "VOL_SPIKE signal");
+            logger.info({ symbol: spikeData.symbol, spikeRatio: spikeData.spikeRatio }, "VOL_SPIKE signal (dashboard only)");
           }
         }
 
