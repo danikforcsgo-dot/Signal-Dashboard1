@@ -11,38 +11,9 @@ const MIN_VOLUME_USD = 1_000_000; // 1M USDT equivalent (volCcy24h × last price
 const BATCH_SIZE = 5;
 const BATCH_DELAY_MS = 200;
 
-// Non-crypto instruments to exclude (commodities, stocks, ETFs, stablecoins)
+// Instruments excluded from scanning
 const EXCLUDED_INST_IDS = new Set([
-  "NG-USDT-SWAP",    // Natural Gas
-  "XAU-USDT-SWAP",   // Gold
-  "XAG-USDT-SWAP",   // Silver
-  "XCU-USDT-SWAP",   // Copper
-  "XPT-USDT-SWAP",   // Platinum
-  "XPD-USDT-SWAP",   // Palladium
-  "AAPL-USDT-SWAP",  // Apple
-  "AMD-USDT-SWAP",   // AMD
-  "AMZN-USDT-SWAP",  // Amazon
-  "COIN-USDT-SWAP",  // Coinbase stock
-  "GOOGL-USDT-SWAP", // Google
-  "HOOD-USDT-SWAP",  // Robinhood
-  "INTC-USDT-SWAP",  // Intel
-  "META-USDT-SWAP",  // Meta
-  "MSFT-USDT-SWAP",  // Microsoft
-  "MSTR-USDT-SWAP",  // MicroStrategy
-  "MU-USDT-SWAP",    // Micron
-  "NFLX-USDT-SWAP",  // Netflix
-  "NVDA-USDT-SWAP",  // Nvidia
-  "ORCL-USDT-SWAP",  // Oracle
-  "PLTR-USDT-SWAP",  // Palantir
-  "SNDK-USDT-SWAP",  // SanDisk
-  "TSLA-USDT-SWAP",  // Tesla
-  "TSM-USDT-SWAP",   // TSMC
-  "SPY-USDT-SWAP",   // S&P 500 ETF
-  "QQQ-USDT-SWAP",   // Nasdaq ETF
-  "IWM-USDT-SWAP",   // Russell 2000 ETF
-  "EWJ-USDT-SWAP",   // Japan ETF
-  "EWY-USDT-SWAP",   // Korea ETF
-  "USDC-USDT-SWAP",  // Stablecoin
+  "NG-USDT-SWAP", // Natural Gas
 ]);
 
 // Volume spike thresholds
