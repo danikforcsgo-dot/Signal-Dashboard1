@@ -7,7 +7,7 @@ import { eq, sql } from "drizzle-orm";
 
 const SCAN_INTERVAL_MS = 60_000;
 const SIGNAL_THRESHOLD = 95;
-const MIN_VOLUME_USDT = 500_000;
+const MIN_VOLUME_USD = 1_000_000; // 1M USDT equivalent (volCcy24h × last price)
 const BATCH_SIZE = 5;
 const BATCH_DELAY_MS = 200;
 
@@ -71,8 +71,10 @@ async function scanOnce(): Promise<void> {
 
   const tickers = await fetchAllSwapTickers();
   const filtered = tickers.filter(t => {
-    const vol = parseFloat(t.volCcy24h || t.vol24h || "0");
-    return vol >= MIN_VOLUME_USDT;
+    const price = parseFloat(t.last || "0");
+    const volBase = parseFloat(t.volCcy24h || t.vol24h || "0");
+    const volUsd = volBase * price; // convert base-currency volume to USD equivalent
+    return volUsd >= MIN_VOLUME_USD;
   });
 
   logger.info({ count: filtered.length }, "Coins to scan");
@@ -86,7 +88,8 @@ async function scanOnce(): Promise<void> {
     await Promise.all(batch.map(async ticker => {
       try {
         const currentPrice = parseFloat(ticker.last);
-        const volume24h = parseFloat(ticker.volCcy24h || ticker.vol24h || "0");
+        const volBase = parseFloat(ticker.volCcy24h || ticker.vol24h || "0");
+        const volume24h = volBase * currentPrice; // USD equivalent
 
         // Fetch ADR data and volume spike data in parallel
         const [adrData, spikeData] = await Promise.all([
