@@ -184,10 +184,11 @@ async function scanOnce(): Promise<void> {
           if (isBreakoutCombo && adrData) {
             // Combo: volume spike + price near ADR level — dashboard only, no Telegram
             const direction = adrData.progressToHigh >= adrData.progressToLow ? "HIGH" : "LOW";
+            // VOL_BREAKOUT_HIGH = buying pressure (green), VOL_BREAKOUT_LOW = selling pressure (red)
             await db.insert(signalsTable).values({
               instId: spikeData.instId,
               symbol: spikeData.symbol,
-              signalType: "VOL_BREAKOUT",
+              signalType: direction === "HIGH" ? "VOL_BREAKOUT_HIGH" : "VOL_BREAKOUT_LOW",
               adrPct: adrData.adrPct,
               price: spikeData.currentPrice,
               adrLevel: direction === "HIGH" ? adrData.adrHighLevel : adrData.adrLowLevel,
@@ -198,11 +199,13 @@ async function scanOnce(): Promise<void> {
             volSpikeCooldowns.set(ticker.instId, Date.now());
             logger.info({ symbol: spikeData.symbol, spikeRatio: spikeData.spikeRatio, direction }, "VOL_BREAKOUT signal (dashboard only)");
           } else if (isPureSpike) {
-            // Pure volume spike — dashboard only, no Telegram
+            // Pure volume spike — direction from 5m candle close vs open
+            // VOL_SPIKE_UP = candle closed up (green), VOL_SPIKE_DOWN = closed down (red)
+            const spikeType = spikeData.priceChange5m >= 0 ? "VOL_SPIKE_UP" : "VOL_SPIKE_DOWN";
             await db.insert(signalsTable).values({
               instId: spikeData.instId,
               symbol: spikeData.symbol,
-              signalType: "VOL_SPIKE",
+              signalType: spikeType,
               adrPct: adrData?.adrPct ?? 0,
               price: spikeData.currentPrice,
               adrLevel: 0,
@@ -211,7 +214,7 @@ async function scanOnce(): Promise<void> {
               telegramMsgId: null,
             });
             volSpikeCooldowns.set(ticker.instId, Date.now());
-            logger.info({ symbol: spikeData.symbol, spikeRatio: spikeData.spikeRatio }, "VOL_SPIKE signal (dashboard only)");
+            logger.info({ symbol: spikeData.symbol, spikeRatio: spikeData.spikeRatio, spikeType }, "VOL_SPIKE signal (dashboard only)");
           }
         }
 

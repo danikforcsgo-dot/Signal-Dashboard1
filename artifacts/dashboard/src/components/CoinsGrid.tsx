@@ -8,8 +8,21 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 const VOL_COOLDOWN_MS = 30 * 60 * 1000; // mirror server cooldown (30 min)
 
 interface VolBadge {
-  type: "VOL_SPIKE" | "VOL_BREAKOUT";
+  type: "VOL_SPIKE_UP" | "VOL_SPIKE_DOWN" | "VOL_BREAKOUT_HIGH" | "VOL_BREAKOUT_LOW";
   ratio: number;
+}
+
+function volBadgeStyle(type: VolBadge["type"]): { cls: string; icon: string; tooltip: string } {
+  switch (type) {
+    case "VOL_SPIKE_UP":
+      return { cls: "bg-neon-green/20 text-neon-green border border-neon-green/40", icon: "🔊", tooltip: "Всплеск объёма — покупки" };
+    case "VOL_SPIKE_DOWN":
+      return { cls: "bg-neon-red/20 text-neon-red border border-neon-red/40", icon: "🔊", tooltip: "Всплеск объёма — продажи" };
+    case "VOL_BREAKOUT_HIGH":
+      return { cls: "bg-neon-green/20 text-neon-green border border-neon-green/40", icon: "🚀", tooltip: "Пробой объёма вверх (у ADR HIGH)" };
+    case "VOL_BREAKOUT_LOW":
+      return { cls: "bg-neon-red/20 text-neon-red border border-neon-red/40", icon: "🚀", tooltip: "Пробой объёма вниз (у ADR LOW)" };
+  }
 }
 
 function getTradingViewUrl(instId: string): string {
@@ -48,10 +61,10 @@ export function CoinsGrid() {
     const map = new Map<string, VolBadge>();
     if (!signalsData) return map;
     const cutoff = Date.now() - VOL_COOLDOWN_MS;
+    const volTypes = ["VOL_SPIKE_UP", "VOL_SPIKE_DOWN", "VOL_BREAKOUT_HIGH", "VOL_BREAKOUT_LOW"];
     for (const s of signalsData.signals) {
-      if (s.signalType !== "VOL_SPIKE" && s.signalType !== "VOL_BREAKOUT") continue;
+      if (!volTypes.includes(s.signalType)) continue;
       if (new Date(s.sentAt).getTime() < cutoff) continue;
-      // Keep the highest ratio for each coin if multiple signals
       const existing = map.get(s.instId);
       if (!existing || s.progressPct > existing.ratio) {
         map.set(s.instId, { type: s.signalType as VolBadge["type"], ratio: s.progressPct });
@@ -177,25 +190,21 @@ export function CoinsGrid() {
                       </TooltipContent>
                     </Tooltip>
                   )}
-                  {volBadge && (
-                    <Tooltip>
-                      <TooltipTrigger>
-                        <span className={`text-[9px] font-mono font-bold px-1 py-0 rounded leading-tight flex-shrink-0 ${
-                          volBadge.type === "VOL_BREAKOUT"
-                            ? "bg-amber-500/20 text-amber-400 border border-amber-400/30"
-                            : "bg-blue-500/20 text-blue-400 border border-blue-400/30"
-                        }`}>
-                          {volBadge.type === "VOL_BREAKOUT" ? "🚀" : "🔊"}{volBadge.ratio.toFixed(1)}x
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent side="top" className="text-[10px]">
-                        {volBadge.type === "VOL_BREAKOUT"
-                          ? `Пробой объёма × ${volBadge.ratio.toFixed(1)}x (цена у ADR уровня)`
-                          : `Всплеск объёма × ${volBadge.ratio.toFixed(1)}x за последние 30 мин`
-                        }
-                      </TooltipContent>
-                    </Tooltip>
-                  )}
+                  {volBadge && (() => {
+                    const st = volBadgeStyle(volBadge.type);
+                    return (
+                      <Tooltip>
+                        <TooltipTrigger>
+                          <span className={`text-[9px] font-mono font-bold px-1 py-0 rounded leading-tight flex-shrink-0 ${st.cls}`}>
+                            {st.icon}{volBadge.ratio.toFixed(1)}x
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="text-[10px]">
+                          {st.tooltip} × {volBadge.ratio.toFixed(1)}x
+                        </TooltipContent>
+                      </Tooltip>
+                    );
+                  })()}
                 </div>
                 <div className="text-right flex-shrink-0 pr-3">
                   <div className="font-mono text-[10px] leading-tight">

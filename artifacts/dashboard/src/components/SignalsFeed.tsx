@@ -19,24 +19,28 @@ function saveHidden(set: Set<number>) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify([...set]));
 }
 
-type SignalKind = "ADR_HIGH" | "ADR_LOW" | "VOL_SPIKE" | "VOL_BREAKOUT";
-
 function getSignalMeta(type: string): {
   dot: string;
   badge: string;
   label: string;
   priceColor: string;
+  isVol: boolean;
 } {
-  switch (type as SignalKind) {
+  switch (type) {
     case "ADR_HIGH":
-      return { dot: "bg-neon-green", badge: "text-neon-green border-neon-green/30", label: "ADR HIGH", priceColor: "text-neon-green" };
+      return { dot: "bg-neon-green", badge: "text-neon-green border-neon-green/30", label: "ADR HIGH",   priceColor: "text-neon-green", isVol: false };
     case "ADR_LOW":
-      return { dot: "bg-neon-red",   badge: "text-neon-red border-neon-red/30",     label: "ADR LOW",  priceColor: "text-neon-red" };
-    case "VOL_BREAKOUT":
-      return { dot: "bg-amber-400",  badge: "text-amber-400 border-amber-400/30",   label: "VOL ×",    priceColor: "text-amber-400" };
-    case "VOL_SPIKE":
+      return { dot: "bg-neon-red",   badge: "text-neon-red border-neon-red/30",     label: "ADR LOW",    priceColor: "text-neon-red",   isVol: false };
+    case "VOL_SPIKE_UP":
+      return { dot: "bg-neon-green", badge: "text-neon-green border-neon-green/30", label: "🔊 покупки", priceColor: "text-neon-green", isVol: true };
+    case "VOL_SPIKE_DOWN":
+      return { dot: "bg-neon-red",   badge: "text-neon-red border-neon-red/30",     label: "🔊 продажи", priceColor: "text-neon-red",   isVol: true };
+    case "VOL_BREAKOUT_HIGH":
+      return { dot: "bg-neon-green", badge: "text-neon-green border-neon-green/30", label: "🚀 HIGH",    priceColor: "text-neon-green", isVol: true };
+    case "VOL_BREAKOUT_LOW":
+      return { dot: "bg-neon-red",   badge: "text-neon-red border-neon-red/30",     label: "🚀 LOW",     priceColor: "text-neon-red",   isVol: true };
     default:
-      return { dot: "bg-blue-400",   badge: "text-blue-400 border-blue-400/30",     label: "🔊 SPIKE", priceColor: "text-blue-400" };
+      return { dot: "bg-muted",      badge: "text-muted-foreground border-border",  label: type,         priceColor: "text-muted-foreground", isVol: false };
   }
 }
 
@@ -92,7 +96,7 @@ export function SignalsFeed() {
             {visibleSignals.map((signal) => {
               const meta = getSignalMeta(signal.signalType);
               const timeFormatted = format(new Date(signal.sentAt), "dd/MM, HH:mm:ss");
-              const isVol = signal.signalType === "VOL_SPIKE" || signal.signalType === "VOL_BREAKOUT";
+              const { isVol } = meta;
 
               return (
                 <div key={signal.id} className="px-2.5 py-1.5 hover:bg-muted/10 transition-colors group" data-testid={`signal-item-${signal.id}`}>
