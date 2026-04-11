@@ -1,4 +1,4 @@
-import { useGetSignals } from "@workspace/api-client-react";
+import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
@@ -19,33 +19,44 @@ function saveHidden(set: Set<number>) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify([...set]));
 }
 
+interface Signal {
+  id: number;
+  symbol: string;
+  signalType: string;
+  price: number;
+  adrPct: number;
+  volume24h: number;
+  sentAt: string;
+}
+
+interface SignalsResponse {
+  signals: Signal[];
+  total: number;
+}
+
 function getSignalMeta(type: string): {
   dot: string;
   badge: string;
   label: string;
   priceColor: string;
-  isVol: boolean;
 } {
   switch (type) {
     case "ADR_HIGH":
-      return { dot: "bg-neon-green", badge: "text-neon-green border-neon-green/30", label: "ADR HIGH",   priceColor: "text-neon-green", isVol: false };
+      return { dot: "bg-neon-green", badge: "text-neon-green border-neon-green/30", label: "ADR HIGH", priceColor: "text-neon-green" };
     case "ADR_LOW":
-      return { dot: "bg-neon-red",   badge: "text-neon-red border-neon-red/30",     label: "ADR LOW",    priceColor: "text-neon-red",   isVol: false };
-    case "VOL_SPIKE_UP":
-      return { dot: "bg-neon-green", badge: "text-neon-green border-neon-green/30", label: "🔊 покупки", priceColor: "text-neon-green", isVol: true };
-    case "VOL_SPIKE_DOWN":
-      return { dot: "bg-neon-red",   badge: "text-neon-red border-neon-red/30",     label: "🔊 продажи", priceColor: "text-neon-red",   isVol: true };
-    case "VOL_BREAKOUT_HIGH":
-      return { dot: "bg-neon-green", badge: "text-neon-green border-neon-green/30", label: "🚀 HIGH",    priceColor: "text-neon-green", isVol: true };
-    case "VOL_BREAKOUT_LOW":
-      return { dot: "bg-neon-red",   badge: "text-neon-red border-neon-red/30",     label: "🚀 LOW",     priceColor: "text-neon-red",   isVol: true };
+      return { dot: "bg-neon-red", badge: "text-neon-red border-neon-red/30", label: "ADR LOW", priceColor: "text-neon-red" };
     default:
-      return { dot: "bg-muted",      badge: "text-muted-foreground border-border",  label: type,         priceColor: "text-muted-foreground", isVol: false };
+      return { dot: "bg-muted", badge: "text-muted-foreground border-border", label: type, priceColor: "text-muted-foreground" };
   }
 }
 
 export function SignalsFeed() {
-  const { data } = useGetSignals({ limit: 50 }, { query: { refetchInterval: 10000 } });
+  const { data } = useQuery<SignalsResponse>({
+    queryKey: ["signals-adr"],
+    queryFn: () => fetch("/api/signals?onlyAdr=true&limit=100").then(r => r.json()) as Promise<SignalsResponse>,
+    refetchInterval: 10000,
+  });
+
   const [hidden, setHidden] = useState<Set<number>>(loadHidden);
 
   const dismiss = useCallback((id: number) => {
@@ -57,8 +68,9 @@ export function SignalsFeed() {
     });
   }, []);
 
-  const visibleSignals = data?.signals.filter(s => !hidden.has(s.id)) ?? [];
-  const hiddenCount = data ? data.signals.length - visibleSignals.length : 0;
+  const allSignals = data?.signals ?? [];
+  const visibleSignals = allSignals.filter(s => !hidden.has(s.id));
+  const hiddenCount = allSignals.length - visibleSignals.length;
 
   return (
     <div className="flex flex-col h-full border border-border bg-card rounded-md overflow-hidden">
@@ -89,14 +101,13 @@ export function SignalsFeed() {
           </div>
         ) : visibleSignals.length === 0 ? (
           <div className="p-6 text-center text-muted-foreground font-mono text-[10px]">
-            {data.signals.length === 0 ? "NO SIGNALS YET" : "ВСЕ СКРЫТЫ"}
+            {allSignals.length === 0 ? "NO SIGNALS YET" : "ВСЕ СКРЫТЫ"}
           </div>
         ) : (
           <div className="divide-y divide-border">
             {visibleSignals.map((signal) => {
               const meta = getSignalMeta(signal.signalType);
               const timeFormatted = format(new Date(signal.sentAt), "dd/MM, HH:mm:ss");
-              const { isVol } = meta;
 
               return (
                 <div key={signal.id} className="px-2.5 py-1.5 hover:bg-muted/10 transition-colors group" data-testid={`signal-item-${signal.id}`}>
@@ -108,10 +119,7 @@ export function SignalsFeed() {
                         variant="outline"
                         className={`text-[9px] py-0 px-1 h-3.5 font-mono leading-none ${meta.badge}`}
                       >
-                        {isVol
-                          ? `${meta.label}${signal.progressPct.toFixed(1)}x`
-                          : meta.label
-                        }
+                        {meta.label}
                       </Badge>
                     </div>
                     <div className="flex items-center gap-1.5">
@@ -128,15 +136,9 @@ export function SignalsFeed() {
 
                   <div className="flex gap-3 text-[10px] font-mono text-muted-foreground ml-3">
                     <span>{signal.price < 1 ? signal.price.toFixed(5) : signal.price.toFixed(2)}</span>
-                    {isVol ? (
-                      <span className={meta.priceColor}>
-                        vol {(signal.volume24h / 1_000_000).toFixed(0)}M
-                      </span>
-                    ) : (
-                      <span className={meta.priceColor}>
-                        {signal.signalType === "ADR_HIGH" ? '+' : '-'}{signal.adrPct.toFixed(2)}%
-                      </span>
-                    )}
+                    <span className={meta.priceColor}>
+                      {signal.signalType === "ADR_HIGH" ? "+" : "-"}{signal.adrPct.toFixed(2)}%
+                    </span>
                     <span>{(signal.volume24h / 1_000_000).toFixed(1)}M</span>
                   </div>
                 </div>

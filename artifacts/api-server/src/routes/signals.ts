@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { signalsTable } from "@workspace/db";
-import { desc, count, sql, eq, gte } from "drizzle-orm";
+import { desc, count, sql, eq, gte, inArray, and } from "drizzle-orm";
 import { GetSignalsQueryParams } from "@workspace/api-zod";
 
 const router = Router();
@@ -10,18 +10,25 @@ router.get("/", async (req, res) => {
   const parsed = GetSignalsQueryParams.safeParse(req.query);
   const limit = parsed.success ? (parsed.data.limit ?? 50) : 50;
   const offset = parsed.success ? (parsed.data.offset ?? 0) : 0;
+  const onlyAdr = req.query.onlyAdr === "true";
+
+  const ADR_TYPES = ["ADR_HIGH", "ADR_LOW"] as const;
 
   const todayStart = new Date();
   todayStart.setUTCHours(0, 0, 0, 0);
 
+  const baseWhere = onlyAdr
+    ? and(gte(signalsTable.sentAt, todayStart), inArray(signalsTable.signalType, [...ADR_TYPES]))
+    : gte(signalsTable.sentAt, todayStart);
+
   const [signals, totalResult] = await Promise.all([
     db.select().from(signalsTable)
-      .where(gte(signalsTable.sentAt, todayStart))
+      .where(baseWhere)
       .orderBy(desc(signalsTable.sentAt))
       .limit(limit)
       .offset(offset),
     db.select({ count: count() }).from(signalsTable)
-      .where(gte(signalsTable.sentAt, todayStart)),
+      .where(baseWhere),
   ]);
 
   res.json({ signals, total: totalResult[0]?.count ?? 0 });
