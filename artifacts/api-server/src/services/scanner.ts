@@ -139,9 +139,12 @@ async function scanOnce(): Promise<void> {
           const existing = stateMap.get(ticker.instId);
           let signalSentHigh = existing?.signalSentHigh ?? false;
           let signalSentLow = existing?.signalSentLow ?? false;
+          // Track timestamps explicitly so resets clear them and new fires always use now()
+          let signalSentHighAt: Date | null = existing?.signalSentHighAt ?? null;
+          let signalSentLowAt: Date | null = existing?.signalSentLowAt ?? null;
 
-          if (shouldResetSignals(existing?.signalSentHighAt ?? null)) signalSentHigh = false;
-          if (shouldResetSignals(existing?.signalSentLowAt ?? null)) signalSentLow = false;
+          if (shouldResetSignals(signalSentHighAt)) { signalSentHigh = false; signalSentHighAt = null; }
+          if (shouldResetSignals(signalSentLowAt))  { signalSentLow  = false; signalSentLowAt  = null; }
 
           const rangeProgress = adrData.progressToHigh + adrData.progressToLow;
           const isHighDominant = adrData.progressToHigh >= adrData.progressToLow;
@@ -161,6 +164,7 @@ async function scanOnce(): Promise<void> {
                 telegramMsgId: msgId,
               });
               signalSentHigh = true;
+              signalSentHighAt = new Date(); // always fresh timestamp on new fire
             } else if (!isHighDominant && !signalSentLow) {
               const msgId = await sendSignalMessage(adrData, "ADR_LOW");
               await db.insert(signalsTable).values({
@@ -175,6 +179,7 @@ async function scanOnce(): Promise<void> {
                 telegramMsgId: msgId,
               });
               signalSentLow = true;
+              signalSentLowAt = new Date(); // always fresh timestamp on new fire
             }
           }
 
@@ -190,8 +195,8 @@ async function scanOnce(): Promise<void> {
             volume24h: adrData.volume24h,
             signalSentHigh,
             signalSentLow,
-            signalSentHighAt: signalSentHigh ? (existing?.signalSentHighAt ?? new Date()) : null,
-            signalSentLowAt: signalSentLow ? (existing?.signalSentLowAt ?? new Date()) : null,
+            signalSentHighAt,
+            signalSentLowAt,
           }).onConflictDoUpdate({
             target: coinStatesTable.instId,
             set: {
@@ -206,8 +211,8 @@ async function scanOnce(): Promise<void> {
               lastUpdated: new Date(),
               signalSentHigh: signalSentHigh,
               signalSentLow: signalSentLow,
-              signalSentHighAt: signalSentHigh ? (existing?.signalSentHighAt ?? new Date()) : null,
-              signalSentLowAt: signalSentLow ? (existing?.signalSentLowAt ?? new Date()) : null,
+              signalSentHighAt,
+              signalSentLowAt,
             },
           });
         }
