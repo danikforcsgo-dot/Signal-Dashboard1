@@ -1,24 +1,35 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { signalsTable } from "@workspace/db";
-import { desc, count, sql, eq, gte, inArray, and } from "drizzle-orm";
+import { desc, count, sql, eq, gte, inArray, and, or } from "drizzle-orm";
 import { GetSignalsQueryParams } from "@workspace/api-zod";
 
 const router = Router();
+
+const ADR_TYPES  = ["ADR_HIGH", "ADR_LOW"] as const;
+const VOL_TYPES  = ["VOL_BREAKOUT_HIGH", "VOL_BREAKOUT_LOW", "VOL_SPIKE_UP", "VOL_SPIKE_DOWN"] as const;
+const BIG_VOL_THRESHOLD = 20; // show vol signals in feed only when ratio ≥ 20x
 
 router.get("/", async (req, res) => {
   const parsed = GetSignalsQueryParams.safeParse(req.query);
   const limit = parsed.success ? (parsed.data.limit ?? 50) : 50;
   const offset = parsed.success ? (parsed.data.offset ?? 0) : 0;
-  const onlyAdr = req.query.onlyAdr === "true";
-
-  const ADR_TYPES = ["ADR_HIGH", "ADR_LOW"] as const;
+  const feedMode = req.query.onlyAdr === "true"; // "onlyAdr" now means "feed mode" (ADR + 20x vol)
 
   const todayStart = new Date();
   todayStart.setUTCHours(0, 0, 0, 0);
 
-  const baseWhere = onlyAdr
-    ? and(gte(signalsTable.sentAt, todayStart), inArray(signalsTable.signalType, [...ADR_TYPES]))
+  const baseWhere = feedMode
+    ? and(
+        gte(signalsTable.sentAt, todayStart),
+        or(
+          inArray(signalsTable.signalType, [...ADR_TYPES]),
+          and(
+            inArray(signalsTable.signalType, [...VOL_TYPES]),
+            gte(signalsTable.progressPct, BIG_VOL_THRESHOLD)
+          )
+        )
+      )
     : gte(signalsTable.sentAt, todayStart);
 
   const [signals, totalResult] = await Promise.all([

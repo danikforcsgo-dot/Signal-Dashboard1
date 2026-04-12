@@ -25,6 +25,7 @@ interface Signal {
   signalType: string;
   price: number;
   adrPct: number;
+  progressPct: number;
   volume24h: number;
   sentAt: string;
 }
@@ -39,20 +40,29 @@ function getSignalMeta(type: string): {
   badge: string;
   label: string;
   priceColor: string;
+  isVol: boolean;
 } {
   switch (type) {
     case "ADR_HIGH":
-      return { dot: "bg-neon-green", badge: "text-neon-green border-neon-green/30", label: "ADR HIGH", priceColor: "text-neon-green" };
+      return { dot: "bg-neon-green", badge: "text-neon-green border-neon-green/30", label: "ADR HIGH", priceColor: "text-neon-green", isVol: false };
     case "ADR_LOW":
-      return { dot: "bg-neon-red", badge: "text-neon-red border-neon-red/30", label: "ADR LOW", priceColor: "text-neon-red" };
+      return { dot: "bg-neon-red", badge: "text-neon-red border-neon-red/30", label: "ADR LOW", priceColor: "text-neon-red", isVol: false };
+    case "VOL_SPIKE_UP":
+      return { dot: "bg-amber-400", badge: "text-amber-400 border-amber-400/30", label: "VOL ▲", priceColor: "text-amber-400", isVol: true };
+    case "VOL_SPIKE_DOWN":
+      return { dot: "bg-amber-600", badge: "text-amber-600 border-amber-600/30", label: "VOL ▼", priceColor: "text-amber-600", isVol: true };
+    case "VOL_BREAKOUT_HIGH":
+      return { dot: "bg-amber-300", badge: "text-amber-300 border-amber-300/30", label: "VOL↑ ADR", priceColor: "text-amber-300", isVol: true };
+    case "VOL_BREAKOUT_LOW":
+      return { dot: "bg-amber-500", badge: "text-amber-500 border-amber-500/30", label: "VOL↓ ADR", priceColor: "text-amber-500", isVol: true };
     default:
-      return { dot: "bg-muted", badge: "text-muted-foreground border-border", label: type, priceColor: "text-muted-foreground" };
+      return { dot: "bg-muted", badge: "text-muted-foreground border-border", label: type, priceColor: "text-muted-foreground", isVol: false };
   }
 }
 
 export function SignalsFeed() {
   const { data } = useQuery<SignalsResponse>({
-    queryKey: ["signals-adr"],
+    queryKey: ["signals-feed"],
     queryFn: () => fetch("/api/signals?onlyAdr=true&limit=100").then(r => r.json()) as Promise<SignalsResponse>,
     refetchInterval: 10000,
   });
@@ -121,6 +131,11 @@ export function SignalsFeed() {
                       >
                         {meta.label}
                       </Badge>
+                      {meta.isVol && (
+                        <span className={`text-[9px] font-mono font-bold ${meta.priceColor}`}>
+                          ×{signal.progressPct.toFixed(1)}
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-1.5">
                       <span className="text-[9px] text-muted-foreground font-mono">{timeFormatted}</span>
@@ -136,10 +151,16 @@ export function SignalsFeed() {
 
                   <div className="flex gap-3 text-[10px] font-mono text-muted-foreground ml-3">
                     <span>{signal.price < 1 ? signal.price.toFixed(5) : signal.price.toFixed(2)}</span>
-                    <span className={meta.priceColor}>
-                      {signal.signalType === "ADR_HIGH" ? "+" : "-"}{signal.adrPct.toFixed(2)}%
-                    </span>
-                    <span>{(signal.volume24h / 1_000_000).toFixed(1)}M</span>
+                    {meta.isVol ? (
+                      <span className={meta.priceColor}>{(signal.volume24h / 1_000_000).toFixed(1)}M vol</span>
+                    ) : (
+                      <span className={meta.priceColor}>
+                        {signal.signalType === "ADR_HIGH" ? "+" : "-"}{signal.adrPct.toFixed(2)}%
+                      </span>
+                    )}
+                    {!meta.isVol && (
+                      <span>{(signal.volume24h / 1_000_000).toFixed(1)}M</span>
+                    )}
                   </div>
                 </div>
               );
