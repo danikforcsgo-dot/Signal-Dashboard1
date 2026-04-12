@@ -7,7 +7,7 @@ import { eq, sql } from "drizzle-orm";
 
 const SCAN_INTERVAL_MS = 60_000;
 const SIGNAL_THRESHOLD = 95;
-const MIN_VOLUME_USD = 1_000_000; // 1M USDT equivalent (volCcy24h × last price)
+const MIN_VOLUME_USD = 200_000; // 200K USDT equivalent (volCcy24h × last price)
 const BATCH_SIZE = 5;
 const BATCH_DELAY_MS = 200;
 
