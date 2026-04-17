@@ -151,35 +151,46 @@ async function scanOnce(): Promise<void> {
 
           if (rangeProgress >= SIGNAL_THRESHOLD) {
             if (isHighDominant && !signalSentHigh) {
-              const msgId = await sendSignalMessage(adrData, "ADR_HIGH");
-              await db.insert(signalsTable).values({
-                instId: adrData.instId,
-                symbol: adrData.symbol,
-                signalType: "ADR_HIGH",
-                adrPct: adrData.adrPct,
-                price: adrData.currentPrice,
-                adrLevel: adrData.adrHighLevel,
-                progressPct: rangeProgress,
-                volume24h: adrData.volume24h,
-                telegramMsgId: msgId,
-              });
-              signalSentHigh = true;
-              signalSentHighAt = new Date(); // always fresh timestamp on new fire
+              try {
+                const msgId = await sendSignalMessage(adrData, "ADR_HIGH");
+                await db.insert(signalsTable).values({
+                  instId: adrData.instId,
+                  symbol: adrData.symbol,
+                  signalType: "ADR_HIGH",
+                  adrPct: adrData.adrPct,
+                  price: adrData.currentPrice,
+                  adrLevel: adrData.adrHighLevel,
+                  progressPct: rangeProgress,
+                  volume24h: adrData.volume24h,
+                  telegramMsgId: msgId,
+                });
+                signalSentHigh = true;
+                signalSentHighAt = new Date();
+              } catch (tgErr) {
+                logger.error({ err: tgErr, instId: ticker.instId }, "Failed to send Telegram signal (ADR_HIGH)");
+                // signalSentHigh stays false — will retry next scan
+                // But the DB upsert below still runs, persisting the reset state
+              }
             } else if (!isHighDominant && !signalSentLow) {
-              const msgId = await sendSignalMessage(adrData, "ADR_LOW");
-              await db.insert(signalsTable).values({
-                instId: adrData.instId,
-                symbol: adrData.symbol,
-                signalType: "ADR_LOW",
-                adrPct: adrData.adrPct,
-                price: adrData.currentPrice,
-                adrLevel: adrData.adrLowLevel,
-                progressPct: rangeProgress,
-                volume24h: adrData.volume24h,
-                telegramMsgId: msgId,
-              });
-              signalSentLow = true;
-              signalSentLowAt = new Date(); // always fresh timestamp on new fire
+              try {
+                const msgId = await sendSignalMessage(adrData, "ADR_LOW");
+                await db.insert(signalsTable).values({
+                  instId: adrData.instId,
+                  symbol: adrData.symbol,
+                  signalType: "ADR_LOW",
+                  adrPct: adrData.adrPct,
+                  price: adrData.currentPrice,
+                  adrLevel: adrData.adrLowLevel,
+                  progressPct: rangeProgress,
+                  volume24h: adrData.volume24h,
+                  telegramMsgId: msgId,
+                });
+                signalSentLow = true;
+                signalSentLowAt = new Date();
+              } catch (tgErr) {
+                logger.error({ err: tgErr, instId: ticker.instId }, "Failed to send Telegram signal (ADR_LOW)");
+                // signalSentLow stays false — will retry next scan
+              }
             }
           }
 
