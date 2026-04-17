@@ -10,17 +10,42 @@ export function isTelegramConnected(): boolean {
   return telegramConnected;
 }
 
+// Global rate limiter: max 1 message per 1.1 seconds to avoid Telegram 429 errors
+let lastSendTime = 0;
+const MIN_SEND_INTERVAL_MS = 1100;
+
+async function rateLimitedDelay(): Promise<void> {
+  const now = Date.now();
+  const wait = MIN_SEND_INTERVAL_MS - (now - lastSendTime);
+  if (wait > 0) await new Promise(r => setTimeout(r, wait));
+  lastSendTime = Date.now();
+}
+
 async function callTelegramAPI(method: string, body: Record<string, unknown>): Promise<unknown> {
   if (!BOT_TOKEN) throw new Error("TELEGRAM_BOT_TOKEN not set");
 
-  const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/${method}`, {
+  const doRequest = async () => fetch(`https://api.telegram.org/bot${BOT_TOKEN}/${method}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(10000),
+    signal: AbortSignal.timeout(15000),
   });
 
-  const data = await res.json() as { ok: boolean; result?: unknown; description?: string };
+  await rateLimitedDelay();
+
+  let res = await doRequest();
+  let data = await res.json() as { ok: boolean; result?: unknown; description?: string; parameters?: { retry_after?: number } };
+
+  // On rate limit: wait exactly as long as Telegram asks, then retry once
+  if (!data.ok && data.description?.includes("Too Many Requests")) {
+    const retryAfter = (data.parameters?.retry_after ?? 10) * 1000 + 500;
+    logger.warn({ retryAfter }, "Telegram rate limited, retrying after delay");
+    await new Promise(r => setTimeout(r, retryAfter));
+    lastSendTime = Date.now();
+    res = await doRequest();
+    data = await res.json() as { ok: boolean; result?: unknown; description?: string };
+  }
+
   if (!data.ok) throw new Error(`Telegram error: ${data.description}`);
   return data.result;
 }
