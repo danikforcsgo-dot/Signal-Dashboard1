@@ -1,5 +1,5 @@
 import { logger } from "../lib/logger";
-import type { CoinADRData, VolumeSpikeData } from "./okx";
+import type { CoinADRData, VolumeSpikeData, VolumeBubbleData } from "./okx";
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
@@ -228,6 +228,59 @@ export async function sendVolumeBreakoutMessage(data: VolumeSpikeData, adr: Coin
     return result.message_id;
   } catch (err) {
     logger.error({ err, symbol: data.symbol }, "Failed to send volume breakout");
+    telegramConnected = false;
+    return null;
+  }
+}
+
+export async function sendVolumeBubbleMessage(data: VolumeBubbleData): Promise<number | null> {
+  if (!BOT_TOKEN || !CHAT_ID) return null;
+
+  const sizeLabel: Record<string, string> = { SMALL: "малый", MEDIUM: "средний", BIG: "большой" };
+  const sizeBubbles: Record<string, string> = { SMALL: "🫧", MEDIUM: "🫧🫧", BIG: "🫧🫧🫧" };
+  const pctLabel: Record<string, string> = { SMALL: "топ 25%", MEDIUM: "топ 10%", BIG: "топ 3%" };
+
+  const isBuy = data.bubbleDirection === "BUY";
+  const isMixed = data.bubbleDirection === "MIXED";
+  const dirEmoji = isBuy ? "📈" : isMixed ? "↔️" : "📉";
+  const dirLabel = isBuy ? "ПОКУПКА" : isMixed ? "НЕЙТРАЛЬНО" : "ПРОДАЖА";
+  const headerEmoji = data.bubbleSize === "BIG"
+    ? (isBuy ? "🚀" : "💀")
+    : (isBuy ? "🟢" : "🔴");
+
+  const now = new Date();
+  const timeStr = now.toLocaleString("ru-RU", {
+    day: "2-digit", month: "2-digit", year: "numeric",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+    timeZone: "UTC",
+  }) + " UTC";
+
+  const okxSlug = getOKXSlug(data.symbol);
+  const tvSymbol = getTVSymbol(data.instId);
+
+  const text = `${headerEmoji} ${sizeBubbles[data.bubbleSize]} ПУЗЫРЬ ОБЪЁМА [${sizeLabel[data.bubbleSize].toUpperCase()}] — ${data.symbol}
+${dirEmoji} ${dirLabel} · ${pctLabel[data.bubbleSize]}
+
+💰 Цена: ${formatPrice(data.currentPrice)} USDT
+📊 Объём 5м: ${formatVolume(data.bubbleVolume5m)} USDT
+📦 Объём 24ч: ${formatVolume(data.volume24h)} USDT
+⏰ ${timeStr}
+
+📈 <a href="https://www.tradingview.com/chart/?symbol=${tvSymbol}">TradingView · ${data.symbol}</a>
+🏦 <a href="https://www.okx.com/ru/trade-swap/${okxSlug}">OKX · ${data.symbol}</a>`;
+
+  try {
+    const result = await callTelegramAPI("sendMessage", {
+      chat_id: CHAT_ID,
+      text,
+      parse_mode: "HTML",
+      disable_web_page_preview: true,
+    }) as { message_id: number };
+    telegramConnected = true;
+    logger.info({ symbol: data.symbol, size: data.bubbleSize, direction: data.bubbleDirection }, "Volume bubble sent to Telegram");
+    return result.message_id;
+  } catch (err) {
+    logger.error({ err, symbol: data.symbol }, "Failed to send volume bubble");
     telegramConnected = false;
     return null;
   }

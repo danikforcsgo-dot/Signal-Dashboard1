@@ -151,6 +151,68 @@ export async function fetch5mCandles(instId: string, limit = 22): Promise<OKXCan
   }));
 }
 
+// ── Volume Bubbles (percentile-based, QuantAlgo style) ──────────────────────
+
+export interface VolumeBubbleData {
+  instId: string;
+  symbol: string;
+  currentPrice: number;
+  volume24h: number;
+  bubbleVolume5m: number;   // USD volume of the completed 5m candle
+  bubbleSize: "SMALL" | "MEDIUM" | "BIG";
+  bubbleDirection: "BUY" | "SELL" | "MIXED";
+}
+
+function percentileLinearInterp(values: number[], pct: number): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const n = sorted.length;
+  const rank = (pct / 100) * (n - 1);
+  const lower = Math.floor(rank);
+  const upper = Math.ceil(rank);
+  if (lower === upper) return sorted[lower];
+  return sorted[lower] + (rank - lower) * (sorted[upper] - sorted[lower]);
+}
+
+export async function fetchVolumeBubbleData(instId: string, currentPrice: number, volume24h: number): Promise<VolumeBubbleData | null> {
+  try {
+    // Need: [0]=in-progress, [1]=last completed, [2..101]=100-bar history
+    const candles = await fetch5mCandles(instId, 103);
+    if (candles.length < 22) return null; // need at least short window
+
+    const lastCandle = candles[1];
+    const history = candles.slice(2);
+
+    const candleVol = parseFloat(lastCandle.volCcyQuote); // USD volume
+    if (candleVol <= 0) return null;
+
+    // Lookback windows
+    const shortH = history.slice(0, 20).map(c => parseFloat(c.volCcyQuote));
+    const midH   = history.length >= 50  ? history.slice(0, 50).map(c => parseFloat(c.volCcyQuote))  : shortH;
+    const longH  = history.length >= 100 ? history.slice(0, 100).map(c => parseFloat(c.volCcyQuote)) : midH;
+
+    const SMALL_PCT = 75, MEDIUM_PCT = 90, BIG_PCT = 97;
+
+    const consensus = (s: boolean, m: boolean, l: boolean) => (s ? 1 : 0) + (m ? 1 : 0) + (l ? 1 : 0) >= 2;
+
+    const isBig    = consensus(candleVol >= percentileLinearInterp(shortH, BIG_PCT),   candleVol >= percentileLinearInterp(midH, BIG_PCT),   candleVol >= percentileLinearInterp(longH, BIG_PCT));
+    const isMedium = !isBig && consensus(candleVol >= percentileLinearInterp(shortH, MEDIUM_PCT), candleVol >= percentileLinearInterp(midH, MEDIUM_PCT), candleVol >= percentileLinearInterp(longH, MEDIUM_PCT));
+    const isSmall  = !isBig && !isMedium && consensus(candleVol >= percentileLinearInterp(shortH, SMALL_PCT),  candleVol >= percentileLinearInterp(midH, SMALL_PCT),  candleVol >= percentileLinearInterp(longH, SMALL_PCT));
+
+    if (!isBig && !isMedium && !isSmall) return null;
+
+    const bubbleSize: "SMALL" | "MEDIUM" | "BIG" = isBig ? "BIG" : isMedium ? "MEDIUM" : "SMALL";
+    const diff = parseFloat(lastCandle.close) - parseFloat(lastCandle.open);
+    const bubbleDirection: "BUY" | "SELL" | "MIXED" = diff > 0 ? "BUY" : diff < 0 ? "SELL" : "MIXED";
+    const symbol = instId.replace("-USDT-SWAP", "") + "/USDT.P";
+
+    return { instId, symbol, currentPrice, volume24h, bubbleVolume5m: candleVol, bubbleSize, bubbleDirection };
+  } catch (err) {
+    logger.debug({ err, instId }, "Failed to fetch volume bubble data");
+    return null;
+  }
+}
+
 export async function fetchVolumeSpikeData(instId: string, currentPrice: number, volume24h: number): Promise<VolumeSpikeData | null> {
   try {
     const candles = await fetch5mCandles(instId, 22);

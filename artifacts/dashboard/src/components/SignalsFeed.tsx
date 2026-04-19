@@ -41,22 +41,36 @@ function getSignalMeta(type: string): {
   label: string;
   priceColor: string;
   isVol: boolean;
+  isBubble: boolean;
 } {
   switch (type) {
     case "ADR_HIGH":
-      return { dot: "bg-neon-green", badge: "text-neon-green border-neon-green/30", label: "ADR HIGH", priceColor: "text-neon-green", isVol: false };
+      return { dot: "bg-neon-green", badge: "text-neon-green border-neon-green/30", label: "ADR HIGH", priceColor: "text-neon-green", isVol: false, isBubble: false };
     case "ADR_LOW":
-      return { dot: "bg-neon-red", badge: "text-neon-red border-neon-red/30", label: "ADR LOW", priceColor: "text-neon-red", isVol: false };
+      return { dot: "bg-neon-red", badge: "text-neon-red border-neon-red/30", label: "ADR LOW", priceColor: "text-neon-red", isVol: false, isBubble: false };
     case "VOL_SPIKE_UP":
-      return { dot: "bg-amber-400", badge: "text-amber-400 border-amber-400/30", label: "VOL ▲", priceColor: "text-amber-400", isVol: true };
+      return { dot: "bg-amber-400", badge: "text-amber-400 border-amber-400/30", label: "VOL ▲", priceColor: "text-amber-400", isVol: true, isBubble: false };
     case "VOL_SPIKE_DOWN":
-      return { dot: "bg-amber-600", badge: "text-amber-600 border-amber-600/30", label: "VOL ▼", priceColor: "text-amber-600", isVol: true };
+      return { dot: "bg-amber-600", badge: "text-amber-600 border-amber-600/30", label: "VOL ▼", priceColor: "text-amber-600", isVol: true, isBubble: false };
     case "VOL_BREAKOUT_HIGH":
-      return { dot: "bg-amber-300", badge: "text-amber-300 border-amber-300/30", label: "VOL↑ ADR", priceColor: "text-amber-300", isVol: true };
+      return { dot: "bg-amber-300", badge: "text-amber-300 border-amber-300/30", label: "VOL↑ ADR", priceColor: "text-amber-300", isVol: true, isBubble: false };
     case "VOL_BREAKOUT_LOW":
-      return { dot: "bg-amber-500", badge: "text-amber-500 border-amber-500/30", label: "VOL↓ ADR", priceColor: "text-amber-500", isVol: true };
+      return { dot: "bg-amber-500", badge: "text-amber-500 border-amber-500/30", label: "VOL↓ ADR", priceColor: "text-amber-500", isVol: true, isBubble: false };
+    // ── Volume Bubbles (progressPct stores 5m volume in USD) ──
+    case "VOL_BUBBLE_SMALL_BUY":
+      return { dot: "bg-sky-400", badge: "text-sky-400 border-sky-400/30", label: "🫧 S·BUY", priceColor: "text-sky-400", isVol: true, isBubble: true };
+    case "VOL_BUBBLE_SMALL_SELL":
+      return { dot: "bg-sky-600", badge: "text-sky-600 border-sky-600/30", label: "🫧 S·SELL", priceColor: "text-sky-600", isVol: true, isBubble: true };
+    case "VOL_BUBBLE_MEDIUM_BUY":
+      return { dot: "bg-violet-400", badge: "text-violet-400 border-violet-400/30", label: "🫧🫧 M·BUY", priceColor: "text-violet-400", isVol: true, isBubble: true };
+    case "VOL_BUBBLE_MEDIUM_SELL":
+      return { dot: "bg-violet-600", badge: "text-violet-600 border-violet-600/30", label: "🫧🫧 M·SELL", priceColor: "text-violet-600", isVol: true, isBubble: true };
+    case "VOL_BUBBLE_BIG_BUY":
+      return { dot: "bg-emerald-400", badge: "text-emerald-400 border-emerald-400/30", label: "🫧🫧🫧 BIG·BUY", priceColor: "text-emerald-400", isVol: true, isBubble: true };
+    case "VOL_BUBBLE_BIG_SELL":
+      return { dot: "bg-rose-500", badge: "text-rose-500 border-rose-500/30", label: "🫧🫧🫧 BIG·SELL", priceColor: "text-rose-500", isVol: true, isBubble: true };
     default:
-      return { dot: "bg-muted", badge: "text-muted-foreground border-border", label: type, priceColor: "text-muted-foreground", isVol: false };
+      return { dot: "bg-muted", badge: "text-muted-foreground border-border", label: type, priceColor: "text-muted-foreground", isVol: false, isBubble: false };
   }
 }
 
@@ -151,16 +165,22 @@ export function SignalsFeed() {
 
                   <div className="flex gap-3 text-[10px] font-mono text-muted-foreground ml-3">
                     <span>{signal.price < 1 ? signal.price.toFixed(5) : signal.price.toFixed(2)}</span>
-                    {meta.isVol ? (
-                      <span className={meta.priceColor}>{(signal.volume24h / 1_000_000).toFixed(1)}M vol</span>
+                    {meta.isBubble ? (
+                      <span className={meta.priceColor}>
+                        5m: {signal.progressPct >= 1_000_000
+                          ? (signal.progressPct / 1_000_000).toFixed(1) + "M"
+                          : signal.progressPct >= 1_000
+                          ? (signal.progressPct / 1_000).toFixed(0) + "K"
+                          : signal.progressPct.toFixed(0)} USDT
+                      </span>
+                    ) : meta.isVol ? (
+                      <span className={meta.priceColor}>×{signal.progressPct.toFixed(1)}</span>
                     ) : (
                       <span className={meta.priceColor}>
                         {signal.signalType === "ADR_HIGH" ? "+" : "-"}{signal.adrPct.toFixed(2)}%
                       </span>
                     )}
-                    {!meta.isVol && (
-                      <span>{(signal.volume24h / 1_000_000).toFixed(1)}M</span>
-                    )}
+                    <span>{(signal.volume24h / 1_000_000).toFixed(1)}M 24h</span>
                   </div>
                 </div>
               );

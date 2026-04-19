@@ -1,8 +1,8 @@
 import { logger } from "../lib/logger";
 import { db } from "@workspace/db";
 import { signalsTable, coinStatesTable } from "@workspace/db";
-import { fetchAllSwapTickers, fetchCoinADRData, fetchVolumeSpikeData } from "./okx";
-import { sendSignalMessage, sendVolumeSpikeMessage, sendVolumeBreakoutMessage } from "./telegram";
+import { fetchAllSwapTickers, fetchCoinADRData, fetchVolumeSpikeData, fetchVolumeBubbleData } from "./okx";
+import { sendSignalMessage, sendVolumeSpikeMessage, sendVolumeBreakoutMessage, sendVolumeBubbleMessage } from "./telegram";
 import { eq, sql } from "drizzle-orm";
 
 const SCAN_INTERVAL_MS = 60_000;
@@ -55,6 +55,16 @@ const VOL_SPIKE_COOLDOWN_MS = 30 * 60 * 1000; // 30 min cooldown per coin
 
 // In-memory cooldown tracker (resets on server restart — acceptable)
 const volSpikeCooldowns = new Map<string, number>();
+
+// Bubble cooldown: 15 min per coin (any tier resets the timer)
+const BUBBLE_COOLDOWN_MS = 15 * 60 * 1000;
+const bubbleCooldowns = new Map<string, number>();
+
+function isBubbleCooledDown(instId: string): boolean {
+  const last = bubbleCooldowns.get(instId);
+  if (!last) return true;
+  return Date.now() - last > BUBBLE_COOLDOWN_MS;
+}
 
 export interface ScannerState {
   botRunning: boolean;
@@ -128,10 +138,13 @@ async function scanOnce(): Promise<void> {
         const volBase = parseFloat(ticker.volCcy24h || ticker.vol24h || "0");
         const volume24h = volBase * currentPrice; // USD equivalent
 
-        // Fetch ADR data and volume spike data in parallel
-        const [adrData, spikeData] = await Promise.all([
+        // Fetch ADR, spike, and bubble data all in parallel
+        const [adrData, spikeData, bubbleData] = await Promise.all([
           fetchCoinADRData(ticker.instId, currentPrice, volume24h),
           fetchVolumeSpikeData(ticker.instId, currentPrice, volume24h),
+          isBubbleCooledDown(ticker.instId)
+            ? fetchVolumeBubbleData(ticker.instId, currentPrice, volume24h)
+            : Promise.resolve(null),
         ]);
 
         // ── ADR signal logic ────────────────────────────────────────────────
@@ -271,6 +284,30 @@ async function scanOnce(): Promise<void> {
             });
             volSpikeCooldowns.set(ticker.instId, Date.now());
             logger.info({ symbol: spikeData.symbol, spikeRatio: spikeData.spikeRatio, spikeType }, "VOL_SPIKE signal (dashboard only)");
+          }
+        }
+
+        // ── Volume Bubbles (percentile-based) ───────────────────────────────
+        // bubbleData is null either when cooled down or no bubble detected
+        if (bubbleData) {
+          const signalType = `VOL_BUBBLE_${bubbleData.bubbleSize}_${bubbleData.bubbleDirection === "MIXED" ? "BUY" : bubbleData.bubbleDirection}`;
+          try {
+            const msgId = await sendVolumeBubbleMessage(bubbleData);
+            await db.insert(signalsTable).values({
+              instId: bubbleData.instId,
+              symbol: bubbleData.symbol,
+              signalType,
+              adrPct: adrData?.adrPct ?? 0,
+              price: bubbleData.currentPrice,
+              adrLevel: 0,
+              progressPct: Math.round(bubbleData.bubbleVolume5m),
+              volume24h: bubbleData.volume24h,
+              telegramMsgId: msgId,
+            });
+            bubbleCooldowns.set(ticker.instId, Date.now());
+            logger.info({ symbol: bubbleData.symbol, size: bubbleData.bubbleSize, direction: bubbleData.bubbleDirection }, "VOL_BUBBLE signal sent");
+          } catch (tgErr) {
+            logger.error({ err: tgErr, instId: ticker.instId }, "Failed to send bubble signal");
           }
         }
 
