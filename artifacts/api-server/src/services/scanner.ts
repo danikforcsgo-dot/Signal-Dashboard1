@@ -122,6 +122,26 @@ export function getBubbleWatchlist(): BubbleWatchlistEntry[] {
   return [...bubbleWatchlistMap.values()].sort((a, b) => b.score - a.score);
 }
 
+// ── Midnight UTC reset scheduler ─────────────────────────────────────────────
+// Fires once at 00:00 UTC (= 03:00 MSK) to clear bubble bot daily state.
+function getMsUntilNextMidnightUTC(): number {
+  const now = new Date();
+  const nextMidnight = new Date();
+  nextMidnight.setUTCHours(24, 0, 0, 0);
+  return nextMidnight.getTime() - now.getTime();
+}
+
+function scheduleMidnightReset(): void {
+  const ms = getMsUntilNextMidnightUTC();
+  logger.info({ msUntilReset: ms, hoursUntilReset: (ms / 3_600_000).toFixed(2) }, "Bubble bot midnight reset scheduled");
+  setTimeout(() => {
+    logger.info("Bubble bot midnight reset — clearing daily state");
+    dailyBubbleFired.clear();
+    bubbleWatchlistMap.clear();
+    scheduleMidnightReset(); // schedule again for the next day
+  }, ms);
+}
+
 let scanInterval: ReturnType<typeof setInterval> | null = null;
 
 export function getScannerState(): ScannerState {
@@ -408,6 +428,7 @@ export async function startScanner(): Promise<void> {
   await run();
 
   scanInterval = setInterval(run, SCAN_INTERVAL_MS);
+  scheduleMidnightReset();
   logger.info("Scanner started");
 }
 

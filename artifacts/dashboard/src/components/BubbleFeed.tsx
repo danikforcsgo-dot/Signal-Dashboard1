@@ -17,16 +17,25 @@ function BubbleDots({ count, isBuy }: { count: 1 | 2 | 3; isBuy: boolean }) {
   );
 }
 
-const STORAGE_KEY = "hidden_bubble_ids_v2";
+const STORAGE_KEY = "hidden_bubble_ids_v3";
+
+function getTodayUTC(): string {
+  return new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
+}
+
 function loadHidden(): Set<number> {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return new Set(JSON.parse(raw) as number[]);
+    if (raw) {
+      const parsed = JSON.parse(raw) as { date: string; ids: number[] };
+      if (parsed.date === getTodayUTC()) return new Set(parsed.ids);
+    }
   } catch {}
   return new Set();
 }
+
 function saveHidden(set: Set<number>) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify([...set]));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({ date: getTodayUTC(), ids: [...set] }));
 }
 
 interface Signal {
