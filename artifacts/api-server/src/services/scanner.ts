@@ -351,27 +351,23 @@ async function scanOnce(): Promise<void> {
         // ── Volume Bubbles (daily percentile-based) ─────────────────────────
         // bubbleData is null if all tiers fired today or no bubble detected.
         // Each tier (SMALL/MEDIUM/BIG) may escalate independently during the day.
+        // Telegram notifications for bubbles are currently DISABLED — dashboard only.
         if (bubbleData && !isDailyBubbleTierFired(ticker.instId, bubbleData.bubbleSize)) {
           const direction = bubbleData.bubbleDirection === "MIXED" ? "BUY" : bubbleData.bubbleDirection;
           const signalType = `VOL_BUBBLE_${bubbleData.bubbleSize}_${direction}`;
-          try {
-            const msgId = await sendVolumeBubbleMessage(bubbleData);
-            await db.insert(signalsTable).values({
-              instId: bubbleData.instId,
-              symbol: bubbleData.symbol,
-              signalType,
-              adrPct: adrData?.adrPct ?? 0,
-              price: bubbleData.currentPrice,
-              adrLevel: 0,
-              progressPct: Math.round(bubbleData.todayVolumeUsd),
-              volume24h: bubbleData.volume24h,
-              telegramMsgId: msgId,
-            });
-            markDailyBubbleTierFired(ticker.instId, bubbleData.bubbleSize);
-            logger.info({ symbol: bubbleData.symbol, size: bubbleData.bubbleSize, direction, todayVol: bubbleData.todayVolumeUsd }, "VOL_BUBBLE_DAILY signal sent");
-          } catch (tgErr) {
-            logger.error({ err: tgErr, instId: ticker.instId }, "Failed to send bubble signal");
-          }
+          await db.insert(signalsTable).values({
+            instId: bubbleData.instId,
+            symbol: bubbleData.symbol,
+            signalType,
+            adrPct: adrData?.adrPct ?? 0,
+            price: bubbleData.currentPrice,
+            adrLevel: 0,
+            progressPct: Math.round(bubbleData.todayVolumeUsd),
+            volume24h: bubbleData.volume24h,
+            telegramMsgId: null,
+          });
+          markDailyBubbleTierFired(ticker.instId, bubbleData.bubbleSize);
+          logger.info({ symbol: bubbleData.symbol, size: bubbleData.bubbleSize, direction, todayVol: bubbleData.todayVolumeUsd }, "VOL_BUBBLE_DAILY signal (dashboard only, TG disabled)");
         }
 
       } catch (err) {
