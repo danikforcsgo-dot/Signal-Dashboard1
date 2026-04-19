@@ -5,6 +5,22 @@ import { fetchAllSwapTickers, fetchCoinADRData, fetchVolumeSpikeData, fetchVolum
 import { sendSignalMessage, sendVolumeSpikeMessage, sendVolumeBreakoutMessage, sendVolumeBubbleMessage } from "./telegram";
 import { eq, sql } from "drizzle-orm";
 
+export interface BubbleWatchlistEntry {
+  instId: string;
+  symbol: string;
+  adrPct: number;
+  currentPrice: number;
+  volume24h: number;
+  progressToHigh: number;
+  progressToLow: number;
+  daysSinceLastBig: number;
+  todayVolumeUsd: number;
+  todayRatioPct: number;
+  p75: number;
+  score: number;
+  updatedAt: string;
+}
+
 const SCAN_INTERVAL_MS = 60_000;
 const SIGNAL_THRESHOLD = 95;
 const MIN_VOLUME_USD = 200_000; // 200K USDT equivalent (volCcy24h × last price)
@@ -99,6 +115,13 @@ const state: ScannerState = {
   lastError: null,
 };
 
+// In-memory bubble watchlist — refreshed every scan cycle
+const bubbleWatchlistMap = new Map<string, BubbleWatchlistEntry>();
+
+export function getBubbleWatchlist(): BubbleWatchlistEntry[] {
+  return [...bubbleWatchlistMap.values()].sort((a, b) => b.score - a.score);
+}
+
 let scanInterval: ReturnType<typeof setInterval> | null = null;
 
 export function getScannerState(): ScannerState {
@@ -152,13 +175,38 @@ async function scanOnce(): Promise<void> {
         const volume24h = volBase * currentPrice; // USD equivalent
 
         // Fetch ADR, spike, and bubble data all in parallel
-        const [adrData, spikeData, bubbleData] = await Promise.all([
+        const [adrData, spikeData, bubbleAnalysis] = await Promise.all([
           fetchCoinADRData(ticker.instId, currentPrice, volume24h),
           fetchVolumeSpikeData(ticker.instId, currentPrice, volume24h),
           allBubbleTiersFiredToday(ticker.instId)
             ? Promise.resolve(null)
             : fetchVolumeBubbleData(ticker.instId, currentPrice, volume24h),
         ]);
+        const bubbleData = bubbleAnalysis?.bubble ?? null;
+
+        // ── Collect watchlist entry ──────────────────────────────────────────
+        if (bubbleAnalysis?.watchlist && adrData) {
+          const w = bubbleAnalysis.watchlist;
+          const vol6log = Math.log10(Math.max(volume24h / 1_000_000, 0.1));
+          const silenceBonus = 1 + Math.min(w.daysSinceLastBig, 60) / 20;
+          const score = adrData.adrPct * vol6log * silenceBonus;
+          const entry: BubbleWatchlistEntry = {
+            instId: ticker.instId,
+            symbol: ticker.instId.replace("-USDT-SWAP", "/USDT.P"),
+            adrPct: adrData.adrPct,
+            currentPrice,
+            volume24h,
+            progressToHigh: adrData.progressToHigh,
+            progressToLow: adrData.progressToLow,
+            daysSinceLastBig: w.daysSinceLastBig,
+            todayVolumeUsd: w.todayVolumeUsd,
+            todayRatioPct: w.todayRatioPct,
+            p75: w.p75,
+            score,
+            updatedAt: new Date().toISOString(),
+          };
+          bubbleWatchlistMap.set(ticker.instId, entry);
+        }
 
         // ── ADR signal logic ────────────────────────────────────────────────
         if (adrData) {

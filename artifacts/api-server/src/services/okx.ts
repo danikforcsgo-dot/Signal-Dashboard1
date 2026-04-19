@@ -164,6 +164,18 @@ export interface VolumeBubbleData {
   bubbleDirection: "BUY" | "SELL" | "MIXED";
 }
 
+export interface BubbleWatchlistInfo {
+  daysSinceLastBig: number;  // days since volume exceeded P75; 999 = not in history window
+  todayVolumeUsd: number;
+  todayRatioPct: number;     // today vol / P75 * 100
+  p75: number;
+}
+
+export interface VolumeBubbleAnalysis {
+  bubble: VolumeBubbleData | null;
+  watchlist: BubbleWatchlistInfo | null;
+}
+
 function percentileLinearInterp(values: number[], pct: number): number {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((a, b) => a - b);
@@ -180,7 +192,7 @@ async function fetchDailyCandles102(instId: string): Promise<OKXCandle[]> {
   return fetchDailyCandles(instId, 102);
 }
 
-export async function fetchVolumeBubbleData(instId: string, currentPrice: number, volume24h: number): Promise<VolumeBubbleData | null> {
+export async function fetchVolumeBubbleData(instId: string, currentPrice: number, volume24h: number): Promise<VolumeBubbleAnalysis | null> {
   try {
     // Fetch 102 daily candles: today's open (unconfirmed) + up to 101 confirmed history
     const candles = await fetchDailyCandles102(instId);
@@ -194,7 +206,7 @@ export async function fetchVolumeBubbleData(instId: string, currentPrice: number
     if (confirmed.length < 20) return null; // need at least short window
 
     const todayVol = parseFloat(todayCandle.volCcyQuote); // today's accumulated USD volume
-    if (todayVol <= 0) return null;
+    if (todayVol <= 0) return { bubble: null, watchlist: null };
 
     // Percentile windows from confirmed daily candles (20 / 50 / 100 bars)
     const shortH = confirmed.slice(0, 20).map(c => parseFloat(c.volCcyQuote));
@@ -204,11 +216,27 @@ export async function fetchVolumeBubbleData(instId: string, currentPrice: number
     const SMALL_PCT = 75, MEDIUM_PCT = 90, BIG_PCT = 97;
     const consensus = (s: boolean, m: boolean, l: boolean) => (s ? 1 : 0) + (m ? 1 : 0) + (l ? 1 : 0) >= 2;
 
+    // Use midH P75 as the primary silence reference (50-bar window)
+    const p75ref = percentileLinearInterp(midH, SMALL_PCT);
+
+    // Days since last confirmed daily bar whose volume exceeded P75 (newest bar = index 0)
+    let daysSinceLastBig = 999;
+    for (let i = 0; i < confirmed.length; i++) {
+      if (parseFloat(confirmed[i].volCcyQuote) >= p75ref) {
+        daysSinceLastBig = i;
+        break;
+      }
+    }
+
+    const todayRatioPct = p75ref > 0 ? Math.round((todayVol / p75ref) * 100) : 0;
+
+    const watchlist: BubbleWatchlistInfo = { daysSinceLastBig, todayVolumeUsd: todayVol, todayRatioPct, p75: p75ref };
+
     const isBig    = consensus(todayVol >= percentileLinearInterp(shortH, BIG_PCT),    todayVol >= percentileLinearInterp(midH, BIG_PCT),    todayVol >= percentileLinearInterp(longH, BIG_PCT));
     const isMedium = !isBig && consensus(todayVol >= percentileLinearInterp(shortH, MEDIUM_PCT), todayVol >= percentileLinearInterp(midH, MEDIUM_PCT), todayVol >= percentileLinearInterp(longH, MEDIUM_PCT));
     const isSmall  = !isBig && !isMedium && consensus(todayVol >= percentileLinearInterp(shortH, SMALL_PCT),  todayVol >= percentileLinearInterp(midH, SMALL_PCT),  todayVol >= percentileLinearInterp(longH, SMALL_PCT));
 
-    if (!isBig && !isMedium && !isSmall) return null;
+    if (!isBig && !isMedium && !isSmall) return { bubble: null, watchlist };
 
     const bubbleSize: "SMALL" | "MEDIUM" | "BIG" = isBig ? "BIG" : isMedium ? "MEDIUM" : "SMALL";
 
@@ -218,7 +246,8 @@ export async function fetchVolumeBubbleData(instId: string, currentPrice: number
     const bubbleDirection: "BUY" | "SELL" | "MIXED" = diff > 0 ? "BUY" : diff < 0 ? "SELL" : "MIXED";
 
     const symbol = instId.replace("-USDT-SWAP", "") + "/USDT.P";
-    return { instId, symbol, currentPrice, volume24h, todayVolumeUsd: todayVol, prevClose, bubbleSize, bubbleDirection };
+    const bubble: VolumeBubbleData = { instId, symbol, currentPrice, volume24h, todayVolumeUsd: todayVol, prevClose, bubbleSize, bubbleDirection };
+    return { bubble, watchlist };
   } catch (err) {
     logger.debug({ err, instId }, "Failed to fetch daily volume bubble data");
     return null;

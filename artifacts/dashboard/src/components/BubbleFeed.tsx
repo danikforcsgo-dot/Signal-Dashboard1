@@ -3,7 +3,7 @@ import { format } from "date-fns";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { useState, useCallback } from "react";
-import { X, ExternalLink, TrendingUp, TrendingDown } from "lucide-react";
+import { X, ExternalLink, TrendingUp, TrendingDown, Clock, Zap, Star } from "lucide-react";
 
 function BubbleDots({ count, isBuy }: { count: 1 | 2 | 3; isBuy: boolean }) {
   const color = isBuy ? "bg-emerald-400" : "bg-red-400";
@@ -18,7 +18,6 @@ function BubbleDots({ count, isBuy }: { count: 1 | 2 | 3; isBuy: boolean }) {
 }
 
 const STORAGE_KEY = "hidden_bubble_ids_v2";
-
 function loadHidden(): Set<number> {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -42,6 +41,28 @@ interface Signal {
 }
 interface SignalsResponse {
   signals: Signal[];
+  total: number;
+}
+
+interface WatchlistEntry {
+  instId: string;
+  symbol: string;
+  adrPct: number;
+  currentPrice: number;
+  volume24h: number;
+  progressToHigh: number;
+  progressToLow: number;
+  daysSinceLastBig: number;
+  todayVolumeUsd: number;
+  todayRatioPct: number;
+  p75: number;
+  score: number;
+  updatedAt: string;
+}
+interface WatchlistResponse {
+  silence: WatchlistEntry[];
+  building: WatchlistEntry[];
+  top3: WatchlistEntry[];
   total: number;
 }
 
@@ -93,6 +114,163 @@ function parseBubble(signalType: string): BubbleMeta {
 
 type DirFilter = "ALL" | "BUY" | "SELL";
 type SizeFilter = "ALL" | "SMALL" | "MEDIUM" | "BIG";
+type FeedTab = "signals" | "watchlist";
+
+function SilenceBar({ ratio }: { ratio: number }) {
+  const pct = Math.min(ratio, 100);
+  const color = ratio >= 80 ? "bg-yellow-400" : ratio >= 50 ? "bg-sky-400" : "bg-muted-foreground/30";
+  return (
+    <div className="flex items-center gap-1.5 flex-1">
+      <div className="h-1 flex-1 bg-muted/40 rounded-full overflow-hidden">
+        <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${pct}%` }} />
+      </div>
+      <span className={`text-[9px] font-mono font-bold w-8 text-right ${
+        ratio >= 80 ? "text-yellow-400" : ratio >= 50 ? "text-sky-400" : "text-muted-foreground"
+      }`}>{ratio}%</span>
+    </div>
+  );
+}
+
+function WatchlistRow({ entry, rank }: { entry: WatchlistEntry; rank?: number }) {
+  const isHighDir = entry.progressToHigh >= entry.progressToLow;
+  const silenceDays = entry.daysSinceLastBig === 999 ? "100+" : String(entry.daysSinceLastBig);
+  return (
+    <div className="px-3 py-2 rounded-md border border-border bg-card/60 hover:bg-card transition-colors group">
+      <div className="flex items-center justify-between mb-1.5">
+        <div className="flex items-center gap-2">
+          {rank !== undefined && (
+            <span className="text-[9px] font-mono text-yellow-400 font-bold w-3">{rank}</span>
+          )}
+          <span className="font-bold text-sm tracking-tight">{getBase(entry.symbol)}</span>
+          <span className="text-[10px] text-muted-foreground font-mono">/USDT.P</span>
+          <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4 font-mono border-purple-500/40 text-purple-400">
+            ADR {entry.adrPct.toFixed(1)}%
+          </Badge>
+        </div>
+        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          <a href={`https://www.tradingview.com/chart/?symbol=${getTVSymbol(entry.symbol)}`}
+            target="_blank" rel="noopener noreferrer"
+            className="text-[9px] text-sky-400 hover:text-sky-300 font-mono flex items-center gap-0.5">
+            <ExternalLink size={8} /> TV
+          </a>
+          <a href={`https://www.okx.com/ru/trade-swap/${getOKXSlug(entry.symbol)}`}
+            target="_blank" rel="noopener noreferrer"
+            className="text-[9px] text-amber-400 hover:text-amber-300 font-mono flex items-center gap-0.5">
+            <ExternalLink size={8} /> OKX
+          </a>
+        </div>
+      </div>
+      <div className="flex items-center gap-3 text-[10px] font-mono text-muted-foreground">
+        <div className="flex items-center gap-1">
+          <Clock size={9} className="text-slate-400" />
+          <span className="text-slate-300">{silenceDays}д</span>
+          <span className="text-muted-foreground/50">тишины</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <span>объём:</span>
+          <span className="text-foreground/60">{formatVol(entry.volume24h)}</span>
+        </div>
+        <div className="flex items-center gap-1 ml-auto">
+          {isHighDir
+            ? <TrendingUp size={9} className="text-emerald-400" />
+            : <TrendingDown size={9} className="text-red-400" />}
+          <span className={isHighDir ? "text-emerald-400" : "text-red-400"}>
+            {isHighDir ? `HIGH ${entry.progressToHigh.toFixed(0)}%` : `LOW ${entry.progressToLow.toFixed(0)}%`}
+          </span>
+        </div>
+      </div>
+      {/* Progress bar: today vol vs P75 */}
+      <div className="flex items-center gap-2 mt-1.5">
+        <span className="text-[9px] font-mono text-muted-foreground/60 w-14">к P75:</span>
+        <SilenceBar ratio={entry.todayRatioPct} />
+      </div>
+    </div>
+  );
+}
+
+function WatchlistPanel() {
+  const { data, isLoading } = useQuery<WatchlistResponse>({
+    queryKey: ["bubble-watchlist"],
+    queryFn: () => fetch("/api/bubble-watchlist").then(r => r.json()) as Promise<WatchlistResponse>,
+    refetchInterval: 60_000,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="p-4 space-y-2">
+        {[...Array(8)].map((_, i) => (
+          <div key={i} className="h-14 bg-muted/20 animate-pulse rounded" />
+        ))}
+      </div>
+    );
+  }
+
+  const isEmpty = !data || (data.silence.length === 0 && data.building.length === 0 && data.top3.length === 0);
+  if (isEmpty) {
+    return (
+      <div className="flex flex-col items-center justify-center h-40 gap-2 text-muted-foreground">
+        <span className="font-mono text-[11px]">ДАННЫЕ НАКАПЛИВАЮТСЯ...</span>
+        <span className="text-[10px] text-muted-foreground/60 font-mono">Бот сканирует монеты, вернитесь через 1–2 мин</span>
+      </div>
+    );
+  }
+
+  return (
+    <ScrollArea className="flex-1">
+      <div className="p-3 space-y-4">
+
+        {/* ─── Top 3 ─── */}
+        {data!.top3.length > 0 && (
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <Star size={11} className="text-yellow-400" />
+              <span className="text-[10px] font-bold tracking-widest text-yellow-400/80">ТОП ПО ПОТЕНЦИАЛУ</span>
+              <span className="text-[9px] text-muted-foreground font-mono">(ADR × объём × тишина)</span>
+            </div>
+            <div className="space-y-1.5">
+              {data!.top3.map((e, i) => (
+                <WatchlistRow key={e.instId} entry={e} rank={i + 1} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ─── Building ─── */}
+        {data!.building.length > 0 && (
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <Zap size={11} className="text-sky-400" />
+              <span className="text-[10px] font-bold tracking-widest text-sky-400/80">СТРОИТСЯ</span>
+              <span className="text-[9px] text-muted-foreground font-mono">(объём 40–99% от P75)</span>
+            </div>
+            <div className="space-y-1.5">
+              {data!.building.map(e => (
+                <WatchlistRow key={e.instId} entry={e} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ─── Long silence ─── */}
+        {data!.silence.length > 0 && (
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <Clock size={11} className="text-slate-400" />
+              <span className="text-[10px] font-bold tracking-widest text-slate-400/80">ДОЛГАЯ ТИШИНА</span>
+              <span className="text-[9px] text-muted-foreground font-mono">(дней без большого объёма)</span>
+            </div>
+            <div className="space-y-1.5">
+              {data!.silence.map(e => (
+                <WatchlistRow key={e.instId} entry={e} />
+              ))}
+            </div>
+          </div>
+        )}
+
+      </div>
+    </ScrollArea>
+  );
+}
 
 export function BubbleFeed() {
   const { data, isLoading } = useQuery<SignalsResponse>({
@@ -104,6 +282,7 @@ export function BubbleFeed() {
   const [hidden, setHidden] = useState<Set<number>>(loadHidden);
   const [dirFilter, setDirFilter] = useState<DirFilter>("ALL");
   const [sizeFilter, setSizeFilter] = useState<SizeFilter>("ALL");
+  const [feedTab, setFeedTab] = useState<FeedTab>("signals");
 
   const dismiss = useCallback((id: number) => {
     setHidden(prev => {
@@ -165,174 +344,187 @@ export function BubbleFeed() {
         </div>
       </div>
 
-      {/* ── Filter bar ── */}
-      <div className="px-3 py-1.5 border-b border-border bg-card/50 flex items-center gap-2 flex-shrink-0">
-        {/* Direction filter */}
-        <div className="flex items-center rounded overflow-hidden border border-border text-[10px] font-mono">
-          {(["ALL", "BUY", "SELL"] as DirFilter[]).map(f => (
-            <button key={f}
-              onClick={() => setDirFilter(f)}
-              className={`px-2 py-0.5 transition-colors ${
-                dirFilter === f
-                  ? f === "BUY" ? "bg-emerald-500/20 text-emerald-400"
-                    : f === "SELL" ? "bg-red-500/20 text-red-400"
-                    : "bg-muted text-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              {f === "BUY" ? "📈 BUY" : f === "SELL" ? "📉 SELL" : "ВСЕ"}
-            </button>
-          ))}
-        </div>
-
-        <div className="w-px h-4 bg-border" />
-
-        {/* Size filter */}
-        <div className="flex items-center rounded overflow-hidden border border-border text-[10px] font-mono">
-          {(["ALL", "SMALL", "MEDIUM", "BIG"] as SizeFilter[]).map(f => (
-            <button key={f}
-              onClick={() => setSizeFilter(f)}
-              className={`px-2.5 py-1 transition-colors flex items-center justify-center ${
-                sizeFilter === f
-                  ? "bg-muted text-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              {f === "ALL" ? <span className="text-[10px]">ВСЕ</span>
-                : <BubbleDots count={f === "SMALL" ? 1 : f === "MEDIUM" ? 2 : 3} isBuy={true} />}
-            </button>
-          ))}
-        </div>
-
-        <div className="ml-auto text-[9px] text-muted-foreground font-mono">
-          {filtered.length} сигналов
-        </div>
+      {/* ── Internal tab switcher ── */}
+      <div className="flex border-b border-border bg-card/50 flex-shrink-0">
+        <button
+          onClick={() => setFeedTab("signals")}
+          className={`flex-1 py-1.5 text-[10px] font-mono font-bold tracking-wider transition-colors ${
+            feedTab === "signals"
+              ? "text-foreground border-b-2 border-foreground"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          СИГНАЛЫ
+        </button>
+        <button
+          onClick={() => setFeedTab("watchlist")}
+          className={`flex-1 py-1.5 text-[10px] font-mono font-bold tracking-wider transition-colors ${
+            feedTab === "watchlist"
+              ? "text-sky-400 border-b-2 border-sky-400"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          НАБЛЮДЕНИЕ
+        </button>
       </div>
 
-      {/* ── Feed ── */}
-      <ScrollArea className="flex-1">
-        {isLoading ? (
-          <div className="p-3 space-y-2">
-            {[...Array(5)].map((_, i) => (
-              <div key={i} className="h-16 bg-muted/20 animate-pulse rounded" />
-            ))}
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-40 gap-2 text-muted-foreground">
-            <div className="flex gap-1"><span className="w-3 h-3 rounded-full bg-muted-foreground/30 inline-block" /><span className="w-3 h-3 rounded-full bg-muted-foreground/30 inline-block" /><span className="w-3 h-3 rounded-full bg-muted-foreground/30 inline-block" /></div>
-            <span className="font-mono text-[11px]">
-              {allSignals.length === 0 ? "НЕТ ПУЗЫРЕЙ СЕГОДНЯ" : "НЕТ СОВПАДЕНИЙ С ФИЛЬТРОМ"}
-            </span>
-          </div>
-        ) : (
-          <div className="p-3 space-y-2">
-            {filtered.map(signal => {
-              const meta = parseBubble(signal.signalType);
-              const isBuy = meta.isBuy;
-              const todayVol = signal.progressPct;
-
-              // Intensity by size for border and background
-              const borderL = isBuy
-                ? meta.size === "BIG" ? "border-l-emerald-400" : meta.size === "MEDIUM" ? "border-l-emerald-500" : "border-l-emerald-600"
-                : meta.size === "BIG" ? "border-l-red-400" : meta.size === "MEDIUM" ? "border-l-red-500" : "border-l-red-600";
-              const rowBg = isBuy
-                ? meta.size === "BIG" ? "bg-emerald-950/40 hover:bg-emerald-950/60" : "bg-emerald-950/20 hover:bg-emerald-950/40"
-                : meta.size === "BIG" ? "bg-red-950/40 hover:bg-red-950/60" : "bg-red-950/20 hover:bg-red-950/40";
-              const borderColor = isBuy
-                ? meta.size === "BIG" ? "border-emerald-500/30" : "border-emerald-600/20"
-                : meta.size === "BIG" ? "border-red-500/30" : "border-red-600/20";
-              const accentColor = isBuy ? "text-emerald-400" : "text-red-400";
-              const accentColorStrong = isBuy ? "text-emerald-300" : "text-red-300";
-
-              const sizeBadgeCls = isBuy
-                ? "border-emerald-500/40 text-emerald-400 bg-emerald-500/10"
-                : "border-red-500/40 text-red-400 bg-red-500/10";
-
-              return (
-                <div key={signal.id}
-                  className={`relative rounded-md border border-l-4 transition-colors group ${borderL} ${borderColor} ${rowBg}`}
+      {feedTab === "watchlist" ? (
+        <WatchlistPanel />
+      ) : (
+        <>
+          {/* ── Filter bar ── */}
+          <div className="px-3 py-1.5 border-b border-border bg-card/50 flex items-center gap-2 flex-shrink-0">
+            <div className="flex items-center rounded overflow-hidden border border-border text-[10px] font-mono">
+              {(["ALL", "BUY", "SELL"] as DirFilter[]).map(f => (
+                <button key={f}
+                  onClick={() => setDirFilter(f)}
+                  className={`px-2 py-0.5 transition-colors ${
+                    dirFilter === f
+                      ? f === "BUY" ? "bg-emerald-500/20 text-emerald-400"
+                        : f === "SELL" ? "bg-red-500/20 text-red-400"
+                        : "bg-muted text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
                 >
-                  {/* Main content */}
-                  <div className="px-3 py-2.5">
+                  {f === "BUY" ? "📈 BUY" : f === "SELL" ? "📉 SELL" : "ВСЕ"}
+                </button>
+              ))}
+            </div>
 
-                    {/* Row 1: symbol + direction + size + time */}
-                    <div className="flex items-center justify-between mb-1.5">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <BubbleDots count={meta.dotCount} isBuy={meta.isBuy} />
-                        <span className="font-bold text-sm tracking-tight">{getBase(signal.symbol)}</span>
-                        <span className="text-[10px] text-muted-foreground font-mono flex-shrink-0">/USDT.P</span>
+            <div className="w-px h-4 bg-border" />
 
-                        <Badge variant="outline"
-                          className={`text-[9px] px-1.5 py-0 h-4 font-bold flex-shrink-0 ${sizeBadgeCls}`}>
-                          {meta.size}
-                        </Badge>
+            <div className="flex items-center rounded overflow-hidden border border-border text-[10px] font-mono">
+              {(["ALL", "SMALL", "MEDIUM", "BIG"] as SizeFilter[]).map(f => (
+                <button key={f}
+                  onClick={() => setSizeFilter(f)}
+                  className={`px-2.5 py-1 transition-colors flex items-center justify-center ${
+                    sizeFilter === f
+                      ? "bg-muted text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {f === "ALL" ? <span className="text-[10px]">ВСЕ</span>
+                    : <BubbleDots count={f === "SMALL" ? 1 : f === "MEDIUM" ? 2 : 3} isBuy={true} />}
+                </button>
+              ))}
+            </div>
 
-                        <div className={`flex items-center gap-1 text-[11px] font-bold flex-shrink-0 ${accentColor}`}>
-                          {isBuy
-                            ? <TrendingUp size={11} className="flex-shrink-0" />
-                            : <TrendingDown size={11} className="flex-shrink-0" />
-                          }
-                          {isBuy ? "BUY" : "SELL"}
-                        </div>
-
-                        <span className="text-[9px] text-muted-foreground font-mono flex-shrink-0">{meta.pctLabel}</span>
-                      </div>
-
-                      <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
-                        <span className="text-[9px] text-muted-foreground font-mono">
-                          {format(new Date(signal.sentAt), "HH:mm")}
-                        </span>
-                        <button
-                          className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
-                          onClick={() => dismiss(signal.id)}
-                        >
-                          <X size={10} />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Row 2: price + volumes + links */}
-                    <div className="flex items-center gap-4 text-[10px] font-mono">
-                      <span className="text-foreground/70">
-                        {formatPrice(signal.price)} <span className="text-muted-foreground">USDT</span>
-                      </span>
-
-                      <div className={`flex items-center gap-1 font-semibold ${accentColorStrong}`}>
-                        <span className="text-muted-foreground font-normal">день:</span>
-                        {formatVol(todayVol)}
-                        <span className="text-muted-foreground font-normal">USDT</span>
-                      </div>
-
-                      <div className="flex items-center gap-1 text-muted-foreground">
-                        <span>24ч:</span>
-                        <span className="text-foreground/50">{formatVol(signal.volume24h)}</span>
-                      </div>
-
-                      <div className={`ml-auto flex items-center gap-0.5 font-mono text-[9px] font-semibold ${accentColor} flex-shrink-0`}>
-                        {meta.pctThreshold}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Hover links */}
-                  <div className="absolute right-8 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-2">
-                    <a href={`https://www.tradingview.com/chart/?symbol=${getTVSymbol(signal.symbol)}`}
-                      target="_blank" rel="noopener noreferrer"
-                      className="flex items-center gap-0.5 text-[9px] text-sky-400 hover:text-sky-300 font-mono">
-                      <ExternalLink size={8} /> TV
-                    </a>
-                    <a href={`https://www.okx.com/ru/trade-swap/${getOKXSlug(signal.symbol)}`}
-                      target="_blank" rel="noopener noreferrer"
-                      className="flex items-center gap-0.5 text-[9px] text-amber-400 hover:text-amber-300 font-mono">
-                      <ExternalLink size={8} /> OKX
-                    </a>
-                  </div>
-                </div>
-              );
-            })}
+            <div className="ml-auto text-[9px] text-muted-foreground font-mono">
+              {filtered.length} сигналов
+            </div>
           </div>
-        )}
-      </ScrollArea>
+
+          {/* ── Feed ── */}
+          <ScrollArea className="flex-1">
+            {isLoading ? (
+              <div className="p-3 space-y-2">
+                {[...Array(5)].map((_, i) => (
+                  <div key={i} className="h-16 bg-muted/20 animate-pulse rounded" />
+                ))}
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-40 gap-2 text-muted-foreground">
+                <div className="flex gap-1">
+                  <span className="w-3 h-3 rounded-full bg-muted-foreground/30 inline-block" />
+                  <span className="w-3 h-3 rounded-full bg-muted-foreground/30 inline-block" />
+                  <span className="w-3 h-3 rounded-full bg-muted-foreground/30 inline-block" />
+                </div>
+                <span className="font-mono text-[11px]">
+                  {allSignals.length === 0 ? "НЕТ ПУЗЫРЕЙ СЕГОДНЯ" : "НЕТ СОВПАДЕНИЙ С ФИЛЬТРОМ"}
+                </span>
+              </div>
+            ) : (
+              <div className="p-3 space-y-2">
+                {filtered.map(signal => {
+                  const meta = parseBubble(signal.signalType);
+                  const isBuy = meta.isBuy;
+                  const todayVol = signal.progressPct;
+
+                  const borderL = isBuy
+                    ? meta.size === "BIG" ? "border-l-emerald-400" : meta.size === "MEDIUM" ? "border-l-emerald-500" : "border-l-emerald-600"
+                    : meta.size === "BIG" ? "border-l-red-400" : meta.size === "MEDIUM" ? "border-l-red-500" : "border-l-red-600";
+                  const rowBg = isBuy
+                    ? meta.size === "BIG" ? "bg-emerald-950/40 hover:bg-emerald-950/60" : "bg-emerald-950/20 hover:bg-emerald-950/40"
+                    : meta.size === "BIG" ? "bg-red-950/40 hover:bg-red-950/60" : "bg-red-950/20 hover:bg-red-950/40";
+                  const borderColor = isBuy
+                    ? meta.size === "BIG" ? "border-emerald-500/30" : "border-emerald-600/20"
+                    : meta.size === "BIG" ? "border-red-500/30" : "border-red-600/20";
+                  const accentColor = isBuy ? "text-emerald-400" : "text-red-400";
+                  const accentColorStrong = isBuy ? "text-emerald-300" : "text-red-300";
+                  const sizeBadgeCls = isBuy
+                    ? "border-emerald-500/40 text-emerald-400 bg-emerald-500/10"
+                    : "border-red-500/40 text-red-400 bg-red-500/10";
+
+                  return (
+                    <div key={signal.id}
+                      className={`relative rounded-md border border-l-4 transition-colors group ${borderL} ${borderColor} ${rowBg}`}
+                    >
+                      <div className="px-3 py-2.5">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <BubbleDots count={meta.dotCount} isBuy={meta.isBuy} />
+                            <span className="font-bold text-sm tracking-tight">{getBase(signal.symbol)}</span>
+                            <span className="text-[10px] text-muted-foreground font-mono flex-shrink-0">/USDT.P</span>
+                            <Badge variant="outline"
+                              className={`text-[9px] px-1.5 py-0 h-4 font-bold flex-shrink-0 ${sizeBadgeCls}`}>
+                              {meta.size}
+                            </Badge>
+                            <div className={`flex items-center gap-1 text-[11px] font-bold flex-shrink-0 ${accentColor}`}>
+                              {isBuy ? <TrendingUp size={11} className="flex-shrink-0" /> : <TrendingDown size={11} className="flex-shrink-0" />}
+                              {isBuy ? "BUY" : "SELL"}
+                            </div>
+                            <span className="text-[9px] text-muted-foreground font-mono flex-shrink-0">{meta.pctLabel}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
+                            <span className="text-[9px] text-muted-foreground font-mono">
+                              {format(new Date(signal.sentAt), "HH:mm")}
+                            </span>
+                            <button
+                              className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
+                              onClick={() => dismiss(signal.id)}
+                            >
+                              <X size={10} />
+                            </button>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-4 text-[10px] font-mono">
+                          <span className="text-foreground/70">
+                            {formatPrice(signal.price)} <span className="text-muted-foreground">USDT</span>
+                          </span>
+                          <div className={`flex items-center gap-1 font-semibold ${accentColorStrong}`}>
+                            <span className="text-muted-foreground font-normal">день:</span>
+                            {formatVol(todayVol)}
+                            <span className="text-muted-foreground font-normal">USDT</span>
+                          </div>
+                          <div className="flex items-center gap-1 text-muted-foreground">
+                            <span>24ч:</span>
+                            <span className="text-foreground/50">{formatVol(signal.volume24h)}</span>
+                          </div>
+                          <div className={`ml-auto flex items-center gap-0.5 font-mono text-[9px] font-semibold ${accentColor} flex-shrink-0`}>
+                            {meta.pctThreshold}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="absolute right-8 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-2">
+                        <a href={`https://www.tradingview.com/chart/?symbol=${getTVSymbol(signal.symbol)}`}
+                          target="_blank" rel="noopener noreferrer"
+                          className="flex items-center gap-0.5 text-[9px] text-sky-400 hover:text-sky-300 font-mono">
+                          <ExternalLink size={8} /> TV
+                        </a>
+                        <a href={`https://www.okx.com/ru/trade-swap/${getOKXSlug(signal.symbol)}`}
+                          target="_blank" rel="noopener noreferrer"
+                          className="flex items-center gap-0.5 text-[9px] text-amber-400 hover:text-amber-300 font-mono">
+                          <ExternalLink size={8} /> OKX
+                        </a>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </ScrollArea>
+        </>
+      )}
     </div>
   );
 }
