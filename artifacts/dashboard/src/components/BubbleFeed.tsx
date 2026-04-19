@@ -200,7 +200,7 @@ export function BubbleFeed() {
                   <div className="flex items-center gap-4 text-[10px] font-mono text-muted-foreground ml-8">
                     <span className="text-foreground/80">💰 {formatPrice(signal.price)}</span>
                     <span className={meta.dirColor}>
-                      5м: {formatVol(vol5m)} USDT
+                      день: {formatVol(vol5m)} USDT
                     </span>
                     <span>24ч: {formatVol(signal.volume24h)}</span>
                     <div className="ml-auto flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">

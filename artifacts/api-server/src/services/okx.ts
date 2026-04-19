@@ -158,7 +158,8 @@ export interface VolumeBubbleData {
   symbol: string;
   currentPrice: number;
   volume24h: number;
-  bubbleVolume5m: number;   // USD volume of the completed 5m candle
+  todayVolumeUsd: number;   // accumulated USD volume of today's open (unconfirmed) daily candle
+  prevClose: number;        // yesterday's close price (reference for direction)
   bubbleSize: "SMALL" | "MEDIUM" | "BIG";
   bubbleDirection: "BUY" | "SELL" | "MIXED";
 }
@@ -174,41 +175,52 @@ function percentileLinearInterp(values: number[], pct: number): number {
   return sorted[lower] + (rank - lower) * (sorted[upper] - sorted[lower]);
 }
 
+// Fetch daily candles with a higher limit for bubble analysis
+async function fetchDailyCandles102(instId: string): Promise<OKXCandle[]> {
+  return fetchDailyCandles(instId, 102);
+}
+
 export async function fetchVolumeBubbleData(instId: string, currentPrice: number, volume24h: number): Promise<VolumeBubbleData | null> {
   try {
-    // Need: [0]=in-progress, [1]=last completed, [2..101]=100-bar history
-    const candles = await fetch5mCandles(instId, 103);
-    if (candles.length < 22) return null; // need at least short window
+    // Fetch 102 daily candles: today's open (unconfirmed) + up to 101 confirmed history
+    const candles = await fetchDailyCandles102(instId);
 
-    const lastCandle = candles[1];
-    const history = candles.slice(2);
+    // Today's open candle (confirm="0") — has accumulated volume so far today
+    const todayCandle = candles.find(c => c.confirm === "0");
+    if (!todayCandle) return null;
 
-    const candleVol = parseFloat(lastCandle.volCcyQuote); // USD volume
-    if (candleVol <= 0) return null;
+    // Historical confirmed daily candles (already sorted newest-first by OKX)
+    const confirmed = candles.filter(c => c.confirm === "1");
+    if (confirmed.length < 20) return null; // need at least short window
 
-    // Lookback windows
-    const shortH = history.slice(0, 20).map(c => parseFloat(c.volCcyQuote));
-    const midH   = history.length >= 50  ? history.slice(0, 50).map(c => parseFloat(c.volCcyQuote))  : shortH;
-    const longH  = history.length >= 100 ? history.slice(0, 100).map(c => parseFloat(c.volCcyQuote)) : midH;
+    const todayVol = parseFloat(todayCandle.volCcyQuote); // today's accumulated USD volume
+    if (todayVol <= 0) return null;
+
+    // Percentile windows from confirmed daily candles (20 / 50 / 100 bars)
+    const shortH = confirmed.slice(0, 20).map(c => parseFloat(c.volCcyQuote));
+    const midH   = confirmed.length >= 50  ? confirmed.slice(0, 50).map(c => parseFloat(c.volCcyQuote))  : shortH;
+    const longH  = confirmed.length >= 100 ? confirmed.slice(0, 100).map(c => parseFloat(c.volCcyQuote)) : midH;
 
     const SMALL_PCT = 75, MEDIUM_PCT = 90, BIG_PCT = 97;
-
     const consensus = (s: boolean, m: boolean, l: boolean) => (s ? 1 : 0) + (m ? 1 : 0) + (l ? 1 : 0) >= 2;
 
-    const isBig    = consensus(candleVol >= percentileLinearInterp(shortH, BIG_PCT),   candleVol >= percentileLinearInterp(midH, BIG_PCT),   candleVol >= percentileLinearInterp(longH, BIG_PCT));
-    const isMedium = !isBig && consensus(candleVol >= percentileLinearInterp(shortH, MEDIUM_PCT), candleVol >= percentileLinearInterp(midH, MEDIUM_PCT), candleVol >= percentileLinearInterp(longH, MEDIUM_PCT));
-    const isSmall  = !isBig && !isMedium && consensus(candleVol >= percentileLinearInterp(shortH, SMALL_PCT),  candleVol >= percentileLinearInterp(midH, SMALL_PCT),  candleVol >= percentileLinearInterp(longH, SMALL_PCT));
+    const isBig    = consensus(todayVol >= percentileLinearInterp(shortH, BIG_PCT),    todayVol >= percentileLinearInterp(midH, BIG_PCT),    todayVol >= percentileLinearInterp(longH, BIG_PCT));
+    const isMedium = !isBig && consensus(todayVol >= percentileLinearInterp(shortH, MEDIUM_PCT), todayVol >= percentileLinearInterp(midH, MEDIUM_PCT), todayVol >= percentileLinearInterp(longH, MEDIUM_PCT));
+    const isSmall  = !isBig && !isMedium && consensus(todayVol >= percentileLinearInterp(shortH, SMALL_PCT),  todayVol >= percentileLinearInterp(midH, SMALL_PCT),  todayVol >= percentileLinearInterp(longH, SMALL_PCT));
 
     if (!isBig && !isMedium && !isSmall) return null;
 
     const bubbleSize: "SMALL" | "MEDIUM" | "BIG" = isBig ? "BIG" : isMedium ? "MEDIUM" : "SMALL";
-    const diff = parseFloat(lastCandle.close) - parseFloat(lastCandle.open);
-    const bubbleDirection: "BUY" | "SELL" | "MIXED" = diff > 0 ? "BUY" : diff < 0 ? "SELL" : "MIXED";
-    const symbol = instId.replace("-USDT-SWAP", "") + "/USDT.P";
 
-    return { instId, symbol, currentPrice, volume24h, bubbleVolume5m: candleVol, bubbleSize, bubbleDirection };
+    // Direction: current price vs yesterday's confirmed close
+    const prevClose = parseFloat(confirmed[0].close);
+    const diff = currentPrice - prevClose;
+    const bubbleDirection: "BUY" | "SELL" | "MIXED" = diff > 0 ? "BUY" : diff < 0 ? "SELL" : "MIXED";
+
+    const symbol = instId.replace("-USDT-SWAP", "") + "/USDT.P";
+    return { instId, symbol, currentPrice, volume24h, todayVolumeUsd: todayVol, prevClose, bubbleSize, bubbleDirection };
   } catch (err) {
-    logger.debug({ err, instId }, "Failed to fetch volume bubble data");
+    logger.debug({ err, instId }, "Failed to fetch daily volume bubble data");
     return null;
   }
 }

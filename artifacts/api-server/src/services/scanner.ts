@@ -56,14 +56,27 @@ const VOL_SPIKE_COOLDOWN_MS = 30 * 60 * 1000; // 30 min cooldown per coin
 // In-memory cooldown tracker (resets on server restart — acceptable)
 const volSpikeCooldowns = new Map<string, number>();
 
-// Bubble cooldown: 15 min per coin (any tier resets the timer)
-const BUBBLE_COOLDOWN_MS = 15 * 60 * 1000;
-const bubbleCooldowns = new Map<string, number>();
+// Daily bubble tracking: each tier (SMALL/MEDIUM/BIG) fires at most once per UTC day per coin.
+// Key: `${instId}_${size}` → UTC date string "YYYY-MM-DD"
+const dailyBubbleFired = new Map<string, string>();
 
-function isBubbleCooledDown(instId: string): boolean {
-  const last = bubbleCooldowns.get(instId);
-  if (!last) return true;
-  return Date.now() - last > BUBBLE_COOLDOWN_MS;
+function getTodayUTC(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function isDailyBubbleTierFired(instId: string, size: string): boolean {
+  return dailyBubbleFired.get(`${instId}_${size}`) === getTodayUTC();
+}
+
+function markDailyBubbleTierFired(instId: string, size: string): void {
+  dailyBubbleFired.set(`${instId}_${size}`, getTodayUTC());
+}
+
+// Skip bubble fetch only if all 3 tiers already fired today for this coin
+function allBubbleTiersFiredToday(instId: string): boolean {
+  return isDailyBubbleTierFired(instId, "SMALL")
+    && isDailyBubbleTierFired(instId, "MEDIUM")
+    && isDailyBubbleTierFired(instId, "BIG");
 }
 
 export interface ScannerState {
@@ -142,9 +155,9 @@ async function scanOnce(): Promise<void> {
         const [adrData, spikeData, bubbleData] = await Promise.all([
           fetchCoinADRData(ticker.instId, currentPrice, volume24h),
           fetchVolumeSpikeData(ticker.instId, currentPrice, volume24h),
-          isBubbleCooledDown(ticker.instId)
-            ? fetchVolumeBubbleData(ticker.instId, currentPrice, volume24h)
-            : Promise.resolve(null),
+          allBubbleTiersFiredToday(ticker.instId)
+            ? Promise.resolve(null)
+            : fetchVolumeBubbleData(ticker.instId, currentPrice, volume24h),
         ]);
 
         // ── ADR signal logic ────────────────────────────────────────────────
@@ -287,10 +300,12 @@ async function scanOnce(): Promise<void> {
           }
         }
 
-        // ── Volume Bubbles (percentile-based) ───────────────────────────────
-        // bubbleData is null either when cooled down or no bubble detected
-        if (bubbleData) {
-          const signalType = `VOL_BUBBLE_${bubbleData.bubbleSize}_${bubbleData.bubbleDirection === "MIXED" ? "BUY" : bubbleData.bubbleDirection}`;
+        // ── Volume Bubbles (daily percentile-based) ─────────────────────────
+        // bubbleData is null if all tiers fired today or no bubble detected.
+        // Each tier (SMALL/MEDIUM/BIG) may escalate independently during the day.
+        if (bubbleData && !isDailyBubbleTierFired(ticker.instId, bubbleData.bubbleSize)) {
+          const direction = bubbleData.bubbleDirection === "MIXED" ? "BUY" : bubbleData.bubbleDirection;
+          const signalType = `VOL_BUBBLE_${bubbleData.bubbleSize}_${direction}`;
           try {
             const msgId = await sendVolumeBubbleMessage(bubbleData);
             await db.insert(signalsTable).values({
@@ -300,12 +315,12 @@ async function scanOnce(): Promise<void> {
               adrPct: adrData?.adrPct ?? 0,
               price: bubbleData.currentPrice,
               adrLevel: 0,
-              progressPct: Math.round(bubbleData.bubbleVolume5m),
+              progressPct: Math.round(bubbleData.todayVolumeUsd),
               volume24h: bubbleData.volume24h,
               telegramMsgId: msgId,
             });
-            bubbleCooldowns.set(ticker.instId, Date.now());
-            logger.info({ symbol: bubbleData.symbol, size: bubbleData.bubbleSize, direction: bubbleData.bubbleDirection }, "VOL_BUBBLE signal sent");
+            markDailyBubbleTierFired(ticker.instId, bubbleData.bubbleSize);
+            logger.info({ symbol: bubbleData.symbol, size: bubbleData.bubbleSize, direction, todayVol: bubbleData.todayVolumeUsd }, "VOL_BUBBLE_DAILY signal sent");
           } catch (tgErr) {
             logger.error({ err: tgErr, instId: ticker.instId }, "Failed to send bubble signal");
           }

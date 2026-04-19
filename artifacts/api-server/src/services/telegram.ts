@@ -258,11 +258,17 @@ export async function sendVolumeBubbleMessage(data: VolumeBubbleData): Promise<n
   const okxSlug = getOKXSlug(data.symbol);
   const tvSymbol = getTVSymbol(data.instId);
 
-  const text = `${headerEmoji} ${sizeBubbles[data.bubbleSize]} ПУЗЫРЬ ОБЪЁМА [${sizeLabel[data.bubbleSize].toUpperCase()}] — ${data.symbol}
+  const priceDiff = data.currentPrice - data.prevClose;
+  const priceDiffPct = ((priceDiff / data.prevClose) * 100).toFixed(2);
+  const priceChangeStr = priceDiff >= 0
+    ? `+${priceDiffPct}% от закрытия вчера`
+    : `${priceDiffPct}% от закрытия вчера`;
+
+  const text = `${headerEmoji} ${sizeBubbles[data.bubbleSize]} ДНЕВНОЙ ПУЗЫРЬ [${sizeLabel[data.bubbleSize].toUpperCase()}] — ${data.symbol}
 ${dirEmoji} ${dirLabel} · ${pctLabel[data.bubbleSize]}
 
-💰 Цена: ${formatPrice(data.currentPrice)} USDT
-📊 Объём 5м: ${formatVolume(data.bubbleVolume5m)} USDT
+💰 Цена: ${formatPrice(data.currentPrice)} USDT (${priceChangeStr})
+📊 Объём сегодня: ${formatVolume(data.todayVolumeUsd)} USDT
 📦 Объём 24ч: ${formatVolume(data.volume24h)} USDT
 ⏰ ${timeStr}
 
