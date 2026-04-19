@@ -92,7 +92,12 @@ export function SignalsFeed() {
     });
   }, []);
 
-  const allSignals = data?.signals ?? [];
+  const BUBBLE_TYPES = new Set([
+    "VOL_BUBBLE_SMALL_BUY", "VOL_BUBBLE_SMALL_SELL",
+    "VOL_BUBBLE_MEDIUM_BUY", "VOL_BUBBLE_MEDIUM_SELL",
+    "VOL_BUBBLE_BIG_BUY", "VOL_BUBBLE_BIG_SELL",
+  ]);
+  const allSignals = (data?.signals ?? []).filter(s => !BUBBLE_TYPES.has(s.signalType));
   const visibleSignals = allSignals.filter(s => !hidden.has(s.id));
   const hiddenCount = allSignals.length - visibleSignals.length;
 
