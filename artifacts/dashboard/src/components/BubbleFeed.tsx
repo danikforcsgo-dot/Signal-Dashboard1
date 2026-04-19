@@ -5,6 +5,18 @@ import { Badge } from "@/components/ui/badge";
 import { useState, useCallback } from "react";
 import { X, ExternalLink, TrendingUp, TrendingDown } from "lucide-react";
 
+function BubbleDots({ count, isBuy }: { count: 1 | 2 | 3; isBuy: boolean }) {
+  const color = isBuy ? "bg-emerald-400" : "bg-red-400";
+  const size = count === 3 ? "w-2.5 h-2.5" : count === 2 ? "w-2 h-2" : "w-1.5 h-1.5";
+  return (
+    <div className="flex items-center gap-0.5">
+      {Array.from({ length: count }).map((_, i) => (
+        <span key={i} className={`rounded-full flex-shrink-0 ${color} ${size}`} />
+      ))}
+    </div>
+  );
+}
+
 const STORAGE_KEY = "hidden_bubble_ids_v2";
 
 function loadHidden(): Set<number> {
@@ -64,7 +76,7 @@ function getBase(symbol: string) {
 interface BubbleMeta {
   isBuy: boolean;
   size: "SMALL" | "MEDIUM" | "BIG";
-  bubbles: string;
+  dotCount: 1 | 2 | 3;
   pctLabel: string;
   pctThreshold: string;
 }
@@ -73,10 +85,10 @@ function parseBubble(signalType: string): BubbleMeta {
   const isBig = signalType.includes("_BIG_");
   const isMedium = signalType.includes("_MEDIUM_");
   const size: BubbleMeta["size"] = isBig ? "BIG" : isMedium ? "MEDIUM" : "SMALL";
-  const bubbles = isBig ? "🫧🫧🫧" : isMedium ? "🫧🫧" : "🫧";
+  const dotCount: 1 | 2 | 3 = isBig ? 3 : isMedium ? 2 : 1;
   const pctLabel = isBig ? "топ 3%" : isMedium ? "топ 10%" : "топ 25%";
   const pctThreshold = isBig ? "P97" : isMedium ? "P90" : "P75";
-  return { isBuy, size, bubbles, pctLabel, pctThreshold };
+  return { isBuy, size, dotCount, pctLabel, pctThreshold };
 }
 
 type DirFilter = "ALL" | "BUY" | "SELL";
@@ -180,13 +192,14 @@ export function BubbleFeed() {
           {(["ALL", "SMALL", "MEDIUM", "BIG"] as SizeFilter[]).map(f => (
             <button key={f}
               onClick={() => setSizeFilter(f)}
-              className={`px-2 py-0.5 transition-colors ${
+              className={`px-2.5 py-1 transition-colors flex items-center justify-center ${
                 sizeFilter === f
                   ? "bg-muted text-foreground"
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              {f === "ALL" ? "ВСЕ" : f === "SMALL" ? "🫧" : f === "MEDIUM" ? "🫧🫧" : "🫧🫧🫧"}
+              {f === "ALL" ? <span className="text-[10px]">ВСЕ</span>
+                : <BubbleDots count={f === "SMALL" ? 1 : f === "MEDIUM" ? 2 : 3} isBuy={true} />}
             </button>
           ))}
         </div>
@@ -206,7 +219,7 @@ export function BubbleFeed() {
           </div>
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-40 gap-2 text-muted-foreground">
-            <span className="text-3xl">🫧</span>
+            <div className="flex gap-1"><span className="w-3 h-3 rounded-full bg-muted-foreground/30 inline-block" /><span className="w-3 h-3 rounded-full bg-muted-foreground/30 inline-block" /><span className="w-3 h-3 rounded-full bg-muted-foreground/30 inline-block" /></div>
             <span className="font-mono text-[11px]">
               {allSignals.length === 0 ? "НЕТ ПУЗЫРЕЙ СЕГОДНЯ" : "НЕТ СОВПАДЕНИЙ С ФИЛЬТРОМ"}
             </span>
@@ -245,7 +258,7 @@ export function BubbleFeed() {
                     {/* Row 1: symbol + direction + size + time */}
                     <div className="flex items-center justify-between mb-1.5">
                       <div className="flex items-center gap-2 min-w-0">
-                        <span className="text-sm leading-none flex-shrink-0">{meta.bubbles}</span>
+                        <BubbleDots count={meta.dotCount} isBuy={meta.isBuy} />
                         <span className="font-bold text-sm tracking-tight">{getBase(signal.symbol)}</span>
                         <span className="text-[10px] text-muted-foreground font-mono flex-shrink-0">/USDT.P</span>
 

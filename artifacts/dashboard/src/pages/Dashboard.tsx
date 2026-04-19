@@ -34,7 +34,7 @@ export default function Dashboard() {
               : "border-transparent text-muted-foreground hover:text-foreground"
           }`}
         >
-          🫧 BUBBLE BOT
+          ◉ BUBBLE BOT
         </button>
       </div>
 
