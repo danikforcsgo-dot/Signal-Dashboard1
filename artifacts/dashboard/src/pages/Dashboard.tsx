@@ -4,6 +4,7 @@ import { StatsRow } from "@/components/StatsRow";
 import { SignalsFeed } from "@/components/SignalsFeed";
 import { CoinsGrid } from "@/components/CoinsGrid";
 import { BubbleFeed } from "@/components/BubbleFeed";
+import { GainersList } from "@/components/GainersList";
 
 type Tab = "adr" | "bubble";
 
@@ -42,9 +43,12 @@ export default function Dashboard() {
         {tab === "adr" ? (
           <>
             <StatsRow />
-            <div className="flex-1 grid grid-cols-1 lg:grid-cols-5 gap-2 min-h-0">
+            <div className="flex-1 grid grid-cols-1 lg:grid-cols-6 gap-2 min-h-0">
               <div className="lg:col-span-1 h-full min-h-0">
                 <SignalsFeed />
+              </div>
+              <div className="lg:col-span-1 h-full min-h-0 border border-border bg-card rounded-md overflow-hidden">
+                <GainersList />
               </div>
               <div className="lg:col-span-4 h-full overflow-auto pr-1">
                 <CoinsGrid />

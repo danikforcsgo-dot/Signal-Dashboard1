@@ -5,6 +5,15 @@ import { fetchAllSwapTickers, fetchCoinADRData, fetchVolumeSpikeData, fetchVolum
 import { sendSignalMessage, sendVolumeSpikeMessage, sendVolumeBreakoutMessage, sendVolumeBubbleMessage } from "./telegram";
 import { eq, sql } from "drizzle-orm";
 
+export interface GainerEntry {
+  instId: string;
+  symbol: string;
+  change24hPct: number;
+  currentPrice: number;
+  volume24h: number;
+  updatedAt: string;
+}
+
 export interface BubbleWatchlistEntry {
   instId: string;
   symbol: string;
@@ -122,6 +131,13 @@ export function getBubbleWatchlist(): BubbleWatchlistEntry[] {
   return [...bubbleWatchlistMap.values()].sort((a, b) => b.score - a.score);
 }
 
+// In-memory gainers list (≥+50% change over 24h) — refreshed every scan cycle
+const gainersMap = new Map<string, GainerEntry>();
+
+export function getGainers(): GainerEntry[] {
+  return [...gainersMap.values()].sort((a, b) => b.change24hPct - a.change24hPct);
+}
+
 // ── Midnight UTC reset scheduler ─────────────────────────────────────────────
 // Fires once at 00:00 UTC (= 03:00 MSK) to clear bubble bot daily state.
 function getMsUntilNextMidnightUTC(): number {
@@ -182,6 +198,29 @@ async function scanOnce(): Promise<void> {
 
   logger.info({ count: filtered.length }, "Coins to scan");
   state.totalCoinsMonitored = filtered.length;
+
+  // ── Compute 24h gainers from tickers (no extra API calls needed) ───────────
+  gainersMap.clear();
+  const MIN_GAINER_CHANGE_PCT = 50;
+  for (const t of tickers) {
+    if (EXCLUDED_INST_IDS.has(t.instId)) continue;
+    const last = parseFloat(t.last || "0");
+    const open = parseFloat(t.open24h || "0");
+    if (last <= 0 || open <= 0) continue;
+    const changePct = ((last - open) / open) * 100;
+    if (changePct < MIN_GAINER_CHANGE_PCT) continue;
+    const volBase = parseFloat(t.volCcy24h || t.vol24h || "0");
+    const volume24h = volBase * last;
+    gainersMap.set(t.instId, {
+      instId: t.instId,
+      symbol: t.instId.replace("-USDT-SWAP", "/USDT.P"),
+      change24hPct: changePct,
+      currentPrice: last,
+      volume24h,
+      updatedAt: new Date().toISOString(),
+    });
+  }
+  logger.info({ count: gainersMap.size }, "Gainers ≥50% updated");
 
   const existingStates = await db.select().from(coinStatesTable);
   const stateMap = new Map(existingStates.map(s => [s.instId, s]));

@@ -5,6 +5,7 @@ const OKX_BASE = "https://www.okx.com";
 export interface OKXTicker {
   instId: string;
   last: string;
+  open24h: string;
   vol24h: string;
   volCcy24h: string;
 }
