@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { signalsTable } from "@workspace/db";
-import { desc, count, sql, eq, gte, inArray, and, or } from "drizzle-orm";
+import { desc, count, eq, gte, inArray, and, or } from "drizzle-orm";
 import { GetSignalsQueryParams } from "@workspace/api-zod";
 
 const router = Router();
@@ -13,30 +13,66 @@ const BUBBLE_TYPES = [
   "VOL_BUBBLE_MEDIUM_BUY", "VOL_BUBBLE_MEDIUM_SELL",
   "VOL_BUBBLE_BIG_BUY",    "VOL_BUBBLE_BIG_SELL",
 ] as const;
-const BIG_VOL_THRESHOLD = 20; // show old vol signals in feed only when ratio ≥ 20x
+const BIG_VOL_THRESHOLD = 20;
 
 router.get("/", async (req, res) => {
   const parsed = GetSignalsQueryParams.safeParse(req.query);
   const limit = parsed.success ? (parsed.data.limit ?? 50) : 50;
   const offset = parsed.success ? (parsed.data.offset ?? 0) : 0;
-  const feedMode = req.query.onlyAdr === "true"; // "onlyAdr" now means "feed mode"
+  const feedMode = req.query.onlyAdr === "true";
 
   const todayStart = new Date();
   todayStart.setUTCHours(0, 0, 0, 0);
 
-  const baseWhere = feedMode
-    ? and(
-        gte(signalsTable.sentAt, todayStart),
-        or(
-          inArray(signalsTable.signalType, [...ADR_TYPES]),
-          inArray(signalsTable.signalType, [...BUBBLE_TYPES]),
-          and(
-            inArray(signalsTable.signalType, [...VOL_TYPES]),
-            gte(signalsTable.progressPct, BIG_VOL_THRESHOLD)
+  if (feedMode) {
+    // ── Feed mode: deduplicate bubble signals ────────────────────────────────
+    // Bubbles fire every scan (no spam guard), so we keep only the LATEST entry
+    // per (instId, signalType). ADR and high-ratio vol signals are kept as-is.
+
+    const [adrVol, bubbles] = await Promise.all([
+      // ADR + big vol signals — rare, no dedup needed
+      db.select().from(signalsTable)
+        .where(and(
+          gte(signalsTable.sentAt, todayStart),
+          or(
+            inArray(signalsTable.signalType, [...ADR_TYPES]),
+            and(
+              inArray(signalsTable.signalType, [...VOL_TYPES]),
+              gte(signalsTable.progressPct, BIG_VOL_THRESHOLD)
+            )
           )
-        )
-      )
-    : gte(signalsTable.sentAt, todayStart);
+        ))
+        .orderBy(desc(signalsTable.sentAt))
+        .limit(200),
+
+      // All of today's bubble signals — will be deduplicated below
+      db.select().from(signalsTable)
+        .where(and(
+          gte(signalsTable.sentAt, todayStart),
+          inArray(signalsTable.signalType, [...BUBBLE_TYPES])
+        ))
+        .orderBy(desc(signalsTable.sentAt)),
+    ]);
+
+    // Keep only the most recent record per (instId, signalType)
+    const seen = new Map<string, typeof bubbles[0]>();
+    for (const s of bubbles) {
+      const key = `${s.instId}|${s.signalType}`;
+      if (!seen.has(key)) seen.set(key, s);
+    }
+    const dedupedBubbles = [...seen.values()];
+
+    // Merge and sort by sentAt desc, apply limit + offset
+    const all = [...adrVol, ...dedupedBubbles]
+      .sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime());
+
+    const page = all.slice(offset, offset + limit);
+    res.json({ signals: page, total: all.length });
+    return;
+  }
+
+  // ── Normal mode (raw feed, no dedup) ────────────────────────────────────
+  const baseWhere = gte(signalsTable.sentAt, todayStart);
 
   const [signals, totalResult] = await Promise.all([
     db.select().from(signalsTable)
