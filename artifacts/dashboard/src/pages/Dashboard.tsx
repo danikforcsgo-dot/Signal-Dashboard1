@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { StatusBar } from "@/components/StatusBar";
-import { StatsRow } from "@/components/StatsRow";
 import { SignalsFeed } from "@/components/SignalsFeed";
 import { CoinsGrid } from "@/components/CoinsGrid";
 import { BubbleFeed } from "@/components/BubbleFeed";
@@ -42,7 +41,6 @@ export default function Dashboard() {
       <main className="flex-1 overflow-hidden flex flex-col p-2 gap-2">
         {tab === "adr" ? (
           <>
-            <StatsRow />
             <div className="flex-1 grid grid-cols-1 lg:grid-cols-6 gap-2 min-h-0">
               <div className="lg:col-span-1 h-full min-h-0">
                 <SignalsFeed />
