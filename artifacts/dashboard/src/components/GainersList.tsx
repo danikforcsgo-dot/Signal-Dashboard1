@@ -47,11 +47,11 @@ export function GainersList() {
       <div className="flex items-center justify-between px-3 py-2 border-b border-border flex-shrink-0">
         <div className="flex items-center gap-1.5 text-[11px] font-bold tracking-wider text-neon-green">
           <TrendingUp className="w-3.5 h-3.5" />
-          ГЕЙНЕРЫ 24Ч
+          ГЕЙНЕРЫ
         </div>
         {data && (
           <span className="text-[10px] font-mono text-muted-foreground">
-            +50% · {data.total} монет
+            +50% сегодня · {data.total}
           </span>
         )}
       </div>
@@ -68,7 +68,8 @@ export function GainersList() {
         {data && data.gainers.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full gap-2 text-muted-foreground">
             <TrendingUp className="w-5 h-5 opacity-30" />
-            <span className="text-[11px] font-mono">Нет монет +50% за 24ч</span>
+            <span className="text-[11px] font-mono">Нет монет +50% сегодня</span>
+            <span className="text-[9px] font-mono text-muted-foreground/60">Сброс в 03:00 МСК</span>
           </div>
         )}
 

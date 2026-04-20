@@ -6,6 +6,7 @@ export interface OKXTicker {
   instId: string;
   last: string;
   open24h: string;
+  sodUtc0: string;
   vol24h: string;
   volCcy24h: string;
 }

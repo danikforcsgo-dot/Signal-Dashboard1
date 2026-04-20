@@ -151,9 +151,10 @@ function scheduleMidnightReset(): void {
   const ms = getMsUntilNextMidnightUTC();
   logger.info({ msUntilReset: ms, hoursUntilReset: (ms / 3_600_000).toFixed(2) }, "Bubble bot midnight reset scheduled");
   setTimeout(() => {
-    logger.info("Bubble bot midnight reset — clearing daily state");
+    logger.info("Midnight UTC reset — clearing daily state");
     dailyBubbleFired.clear();
     bubbleWatchlistMap.clear();
+    gainersMap.clear();
     scheduleMidnightReset(); // schedule again for the next day
   }, ms);
 }
@@ -205,7 +206,8 @@ async function scanOnce(): Promise<void> {
   for (const t of tickers) {
     if (EXCLUDED_INST_IDS.has(t.instId)) continue;
     const last = parseFloat(t.last || "0");
-    const open = parseFloat(t.open24h || "0");
+    // sodUtc0 = open price at 00:00 UTC (03:00 МСК) — resets daily at midnight UTC
+    const open = parseFloat(t.sodUtc0 || t.open24h || "0");
     if (last <= 0 || open <= 0) continue;
     const changePct = ((last - open) / open) * 100;
     if (changePct < MIN_GAINER_CHANGE_PCT) continue;
