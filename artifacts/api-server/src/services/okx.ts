@@ -164,6 +164,9 @@ export interface VolumeBubbleData {
   prevClose: number;        // yesterday's close price (reference for direction)
   bubbleSize: "SMALL" | "MEDIUM" | "BIG";
   bubbleDirection: "BUY" | "SELL" | "MIXED";
+  isProjected: boolean;     // true = BIG upgraded via rate projection, not yet actual P97
+  projectedDailyVol?: number; // projected end-of-day volume (only set when isProjected=true)
+  hoursIntoDay?: number;    // UTC hours elapsed since midnight (only set when isProjected=true)
 }
 
 export interface BubbleWatchlistInfo {
@@ -234,9 +237,43 @@ export async function fetchVolumeBubbleData(instId: string, currentPrice: number
 
     const watchlist: BubbleWatchlistInfo = { daysSinceLastBig, todayVolumeUsd: todayVol, todayRatioPct, p75: p75ref };
 
-    const isBig    = consensus(todayVol >= percentileLinearInterp(shortH, BIG_PCT),    todayVol >= percentileLinearInterp(midH, BIG_PCT),    todayVol >= percentileLinearInterp(longH, BIG_PCT));
-    const isMedium = !isBig && consensus(todayVol >= percentileLinearInterp(shortH, MEDIUM_PCT), todayVol >= percentileLinearInterp(midH, MEDIUM_PCT), todayVol >= percentileLinearInterp(longH, MEDIUM_PCT));
-    const isSmall  = !isBig && !isMedium && consensus(todayVol >= percentileLinearInterp(shortH, SMALL_PCT),  todayVol >= percentileLinearInterp(midH, SMALL_PCT),  todayVol >= percentileLinearInterp(longH, SMALL_PCT));
+    let isBig    = consensus(todayVol >= percentileLinearInterp(shortH, BIG_PCT),    todayVol >= percentileLinearInterp(midH, BIG_PCT),    todayVol >= percentileLinearInterp(longH, BIG_PCT));
+    let isMedium = !isBig && consensus(todayVol >= percentileLinearInterp(shortH, MEDIUM_PCT), todayVol >= percentileLinearInterp(midH, MEDIUM_PCT), todayVol >= percentileLinearInterp(longH, MEDIUM_PCT));
+    let isSmall  = !isBig && !isMedium && consensus(todayVol >= percentileLinearInterp(shortH, SMALL_PCT),  todayVol >= percentileLinearInterp(midH, SMALL_PCT),  todayVol >= percentileLinearInterp(longH, SMALL_PCT));
+
+    // ── Projected-volume early detection ──────────────────────────────────────
+    // If we're 0.5–10h into the UTC day and not yet actual BIG, project today's
+    // accumulated volume to end-of-day and check if it would reach P97.
+    // Guard: actual volume must already cross P75 in at least one window (= SMALL tier).
+    let isProjected = false;
+    let projectedDailyVol: number | undefined;
+    let hoursIntoDay: number | undefined;
+
+    if (!isBig) {
+      const now = new Date();
+      const h = now.getUTCHours() + now.getUTCMinutes() / 60 + now.getUTCSeconds() / 3600;
+      if (h >= 0.5 && h <= 10) {
+        const projected = todayVol / (h / 24);
+        const projBig = consensus(
+          projected >= percentileLinearInterp(shortH, BIG_PCT),
+          projected >= percentileLinearInterp(midH, BIG_PCT),
+          projected >= percentileLinearInterp(longH, BIG_PCT),
+        );
+        const actualAtLeastSmall =
+          todayVol >= percentileLinearInterp(shortH, SMALL_PCT) ||
+          todayVol >= percentileLinearInterp(midH, SMALL_PCT) ||
+          todayVol >= percentileLinearInterp(longH, SMALL_PCT);
+
+        if (projBig && actualAtLeastSmall) {
+          isBig = true;
+          isMedium = false;
+          isSmall = false;
+          isProjected = true;
+          projectedDailyVol = projected;
+          hoursIntoDay = h;
+        }
+      }
+    }
 
     if (!isBig && !isMedium && !isSmall) return { bubble: null, watchlist };
 
@@ -248,7 +285,10 @@ export async function fetchVolumeBubbleData(instId: string, currentPrice: number
     const bubbleDirection: "BUY" | "SELL" | "MIXED" = diff > 0 ? "BUY" : diff < 0 ? "SELL" : "MIXED";
 
     const symbol = instId.replace("-USDT-SWAP", "") + "/USDT.P";
-    const bubble: VolumeBubbleData = { instId, symbol, currentPrice, volume24h, todayVolumeUsd: todayVol, prevClose, bubbleSize, bubbleDirection };
+    const bubble: VolumeBubbleData = {
+      instId, symbol, currentPrice, volume24h, todayVolumeUsd: todayVol, prevClose,
+      bubbleSize, bubbleDirection, isProjected, projectedDailyVol, hoursIntoDay,
+    };
     return { bubble, watchlist };
   } catch (err) {
     logger.debug({ err, instId }, "Failed to fetch daily volume bubble data");

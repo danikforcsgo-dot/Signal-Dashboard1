@@ -264,9 +264,13 @@ export async function sendVolumeBubbleMessage(data: VolumeBubbleData): Promise<n
     ? `+${priceDiffPct}% от закрытия вчера`
     : `${priceDiffPct}% от закрытия вчера`;
 
-  const text = `${headerEmoji} ${sizeBubbles[data.bubbleSize]} ДНЕВНОЙ ПУЗЫРЬ [${sizeLabel[data.bubbleSize].toUpperCase()}] — ${data.symbol}
-${dirEmoji} ${dirLabel} · ${pctLabel[data.bubbleSize]}
+  const projLine = data.isProjected && data.projectedDailyVol && data.hoursIntoDay
+    ? `📐 РАННИЙ СИГНАЛ · прогноз за день: ${formatVolume(data.projectedDailyVol)} USDT (через ${data.hoursIntoDay.toFixed(1)}ч)`
+    : null;
 
+  const text = `${headerEmoji} ${sizeBubbles[data.bubbleSize]} ДНЕВНОЙ ПУЗЫРЬ [${sizeLabel[data.bubbleSize].toUpperCase()}] — ${data.symbol}${data.isProjected ? " ⚡" : ""}
+${dirEmoji} ${dirLabel} · ${pctLabel[data.bubbleSize]}
+${projLine ? `\n${projLine}\n` : ""}
 💰 Цена: ${formatPrice(data.currentPrice)} USDT (${priceChangeStr})
 📊 Объём сегодня: ${formatVolume(data.todayVolumeUsd)} USDT
 📦 Объём 24ч: ${formatVolume(data.volume24h)} USDT

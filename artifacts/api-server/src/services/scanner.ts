@@ -400,7 +400,16 @@ async function scanOnce(): Promise<void> {
           if (sendToTelegram) {
             try {
               telegramMsgId = await sendVolumeBubbleMessage(bubbleData);
-              logger.info({ symbol: bubbleData.symbol, size: bubbleData.bubbleSize, direction }, "VOL_BUBBLE_DAILY BIG signal sent to Telegram");
+              logger.info({
+                symbol: bubbleData.symbol,
+                size: bubbleData.bubbleSize,
+                direction,
+                isProjected: bubbleData.isProjected,
+                ...(bubbleData.isProjected && {
+                  projectedVol: Math.round(bubbleData.projectedDailyVol ?? 0),
+                  hoursIntoDay: bubbleData.hoursIntoDay?.toFixed(2),
+                }),
+              }, bubbleData.isProjected ? "VOL_BUBBLE_DAILY BIG (PROJECTED) sent to Telegram" : "VOL_BUBBLE_DAILY BIG signal sent to Telegram");
             } catch (tgErr) {
               logger.error({ err: tgErr, symbol: bubbleData.symbol }, "Failed to send bubble BIG signal to Telegram");
             }
@@ -417,7 +426,19 @@ async function scanOnce(): Promise<void> {
             volume24h: bubbleData.volume24h,
             telegramMsgId,
           });
-          logger.info({ symbol: bubbleData.symbol, size: bubbleData.bubbleSize, direction, todayVol: bubbleData.todayVolumeUsd }, sendToTelegram ? "VOL_BUBBLE_DAILY BIG signal (TG enabled)" : "VOL_BUBBLE_DAILY signal (dashboard only)");
+          logger.info({
+            symbol: bubbleData.symbol,
+            size: bubbleData.bubbleSize,
+            direction,
+            todayVol: bubbleData.todayVolumeUsd,
+            isProjected: bubbleData.isProjected,
+            ...(bubbleData.isProjected && {
+              projectedVol: Math.round(bubbleData.projectedDailyVol ?? 0),
+              hoursIntoDay: bubbleData.hoursIntoDay?.toFixed(2),
+            }),
+          }, sendToTelegram
+            ? (bubbleData.isProjected ? "VOL_BUBBLE_DAILY BIG PROJECTED (TG enabled)" : "VOL_BUBBLE_DAILY BIG signal (TG enabled)")
+            : "VOL_BUBBLE_DAILY signal (dashboard only)");
         }
 
       } catch (err) {
