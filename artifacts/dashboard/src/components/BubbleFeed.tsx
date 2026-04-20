@@ -3,7 +3,7 @@ import { format } from "date-fns";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { useState, useCallback } from "react";
-import { X, ExternalLink, TrendingUp, TrendingDown, Clock, Zap, Star } from "lucide-react";
+import { X, ExternalLink, TrendingUp, TrendingDown, Clock } from "lucide-react";
 
 function BubbleDots({ count, isBuy }: { count: 1 | 2 | 3; isBuy: boolean }) {
   const color = isBuy ? "bg-emerald-400" : "bg-red-400";
@@ -70,8 +70,6 @@ interface WatchlistEntry {
 }
 interface WatchlistResponse {
   silence: WatchlistEntry[];
-  building: WatchlistEntry[];
-  top3: WatchlistEntry[];
   total: number;
 }
 
@@ -214,7 +212,7 @@ function WatchlistPanel() {
     );
   }
 
-  const isEmpty = !data || (data.silence.length === 0 && data.building.length === 0 && data.top3.length === 0);
+  const isEmpty = !data || data.silence.length === 0;
   if (isEmpty) {
     return (
       <div className="flex flex-col items-center justify-center h-40 gap-2 text-muted-foreground">
@@ -226,56 +224,18 @@ function WatchlistPanel() {
 
   return (
     <ScrollArea className="flex-1">
-      <div className="p-3 space-y-4">
-
-        {/* ─── Top 3 ─── */}
-        {data!.top3.length > 0 && (
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <Star size={11} className="text-yellow-400" />
-              <span className="text-[10px] font-bold tracking-widest text-yellow-400/80">ТОП ПО ПОТЕНЦИАЛУ</span>
-              <span className="text-[9px] text-muted-foreground font-mono">(ADR × объём × тишина)</span>
-            </div>
-            <div className="space-y-1.5">
-              {data!.top3.map((e, i) => (
-                <WatchlistRow key={e.instId} entry={e} rank={i + 1} />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* ─── Building ─── */}
-        {data!.building.length > 0 && (
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <Zap size={11} className="text-sky-400" />
-              <span className="text-[10px] font-bold tracking-widest text-sky-400/80">СТРОИТСЯ</span>
-              <span className="text-[9px] text-muted-foreground font-mono">(объём 40–99% от P75)</span>
-            </div>
-            <div className="space-y-1.5">
-              {data!.building.map(e => (
-                <WatchlistRow key={e.instId} entry={e} />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* ─── Long silence ─── */}
-        {data!.silence.length > 0 && (
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <Clock size={11} className="text-slate-400" />
-              <span className="text-[10px] font-bold tracking-widest text-slate-400/80">ДОЛГАЯ ТИШИНА</span>
-              <span className="text-[9px] text-muted-foreground font-mono">(дней без большого объёма)</span>
-            </div>
-            <div className="space-y-1.5">
-              {data!.silence.map(e => (
-                <WatchlistRow key={e.instId} entry={e} />
-              ))}
-            </div>
-          </div>
-        )}
-
+      <div className="p-3">
+        <div className="flex items-center gap-2 mb-3">
+          <Clock size={11} className="text-slate-400" />
+          <span className="text-[10px] font-bold tracking-widest text-slate-400/80">ДОЛГАЯ ТИШИНА</span>
+          <span className="text-[9px] text-muted-foreground font-mono">(дней без большого объёма)</span>
+          <span className="ml-auto text-[9px] text-muted-foreground font-mono">{data!.silence.length} монет</span>
+        </div>
+        <div className="space-y-1.5">
+          {data!.silence.map(e => (
+            <WatchlistRow key={e.instId} entry={e} />
+          ))}
+        </div>
       </div>
     </ScrollArea>
   );
