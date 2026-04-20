@@ -412,10 +412,23 @@ async function scanOnce(): Promise<void> {
         // ── Volume Bubbles (daily percentile-based) ─────────────────────────
         // bubbleData is null if all tiers fired today or no bubble detected.
         // Each tier (SMALL/MEDIUM/BIG) may escalate independently during the day.
-        // Telegram notifications for bubbles are currently DISABLED — dashboard only.
+        // Telegram enabled only for BIG+BUY tier; others are dashboard-only.
         if (bubbleData && !isDailyBubbleTierFired(ticker.instId, bubbleData.bubbleSize)) {
           const direction = bubbleData.bubbleDirection === "MIXED" ? "BUY" : bubbleData.bubbleDirection;
           const signalType = `VOL_BUBBLE_${bubbleData.bubbleSize}_${direction}`;
+
+          const isBigBuy = bubbleData.bubbleSize === "BIG" && direction === "BUY";
+          let telegramMsgId: number | null = null;
+
+          if (isBigBuy) {
+            try {
+              telegramMsgId = await sendVolumeBubbleMessage(bubbleData);
+              logger.info({ symbol: bubbleData.symbol, size: bubbleData.bubbleSize, direction }, "VOL_BUBBLE_DAILY BIG·BUY sent to Telegram");
+            } catch (tgErr) {
+              logger.error({ err: tgErr, symbol: bubbleData.symbol }, "Failed to send bubble BIG·BUY to Telegram");
+            }
+          }
+
           await db.insert(signalsTable).values({
             instId: bubbleData.instId,
             symbol: bubbleData.symbol,
@@ -425,10 +438,10 @@ async function scanOnce(): Promise<void> {
             adrLevel: 0,
             progressPct: Math.round(bubbleData.todayVolumeUsd),
             volume24h: bubbleData.volume24h,
-            telegramMsgId: null,
+            telegramMsgId,
           });
           markDailyBubbleTierFired(ticker.instId, bubbleData.bubbleSize);
-          logger.info({ symbol: bubbleData.symbol, size: bubbleData.bubbleSize, direction, todayVol: bubbleData.todayVolumeUsd }, "VOL_BUBBLE_DAILY signal (dashboard only, TG disabled)");
+          logger.info({ symbol: bubbleData.symbol, size: bubbleData.bubbleSize, direction, todayVol: bubbleData.todayVolumeUsd }, isBigBuy ? "VOL_BUBBLE_DAILY BIG·BUY signal (TG enabled)" : "VOL_BUBBLE_DAILY signal (dashboard only)");
         }
 
       } catch (err) {
