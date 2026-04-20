@@ -81,27 +81,8 @@ const VOL_SPIKE_COOLDOWN_MS = 30 * 60 * 1000; // 30 min cooldown per coin
 // In-memory cooldown tracker (resets on server restart — acceptable)
 const volSpikeCooldowns = new Map<string, number>();
 
-// Daily bubble tracking: each tier (SMALL/MEDIUM/BIG) fires at most once per UTC day per coin.
-// Key: `${instId}_${size}` → UTC date string "YYYY-MM-DD"
-const dailyBubbleFired = new Map<string, string>();
-
 function getTodayUTC(): string {
   return new Date().toISOString().slice(0, 10);
-}
-
-function isDailyBubbleTierFired(instId: string, size: string): boolean {
-  return dailyBubbleFired.get(`${instId}_${size}`) === getTodayUTC();
-}
-
-function markDailyBubbleTierFired(instId: string, size: string): void {
-  dailyBubbleFired.set(`${instId}_${size}`, getTodayUTC());
-}
-
-// Skip bubble fetch only if all 3 tiers already fired today for this coin
-function allBubbleTiersFiredToday(instId: string): boolean {
-  return isDailyBubbleTierFired(instId, "SMALL")
-    && isDailyBubbleTierFired(instId, "MEDIUM")
-    && isDailyBubbleTierFired(instId, "BIG");
 }
 
 export interface ScannerState {
@@ -152,7 +133,6 @@ function scheduleMidnightReset(): void {
   logger.info({ msUntilReset: ms, hoursUntilReset: (ms / 3_600_000).toFixed(2) }, "Bubble bot midnight reset scheduled");
   setTimeout(() => {
     logger.info("Midnight UTC reset — clearing daily state");
-    dailyBubbleFired.clear();
     bubbleWatchlistMap.clear();
     gainersMap.clear();
     scheduleMidnightReset(); // schedule again for the next day
@@ -239,9 +219,7 @@ async function scanOnce(): Promise<void> {
         const [adrData, spikeData, bubbleAnalysis] = await Promise.all([
           fetchCoinADRData(ticker.instId, currentPrice, volume24h),
           fetchVolumeSpikeData(ticker.instId, currentPrice, volume24h),
-          allBubbleTiersFiredToday(ticker.instId)
-            ? Promise.resolve(null)
-            : fetchVolumeBubbleData(ticker.instId, currentPrice, volume24h),
+          fetchVolumeBubbleData(ticker.instId, currentPrice, volume24h),
         ]);
         const bubbleData = bubbleAnalysis?.bubble ?? null;
 
@@ -410,10 +388,9 @@ async function scanOnce(): Promise<void> {
         }
 
         // ── Volume Bubbles (daily percentile-based) ─────────────────────────
-        // bubbleData is null if all tiers fired today or no bubble detected.
-        // Each tier (SMALL/MEDIUM/BIG) may escalate independently during the day.
-        // Telegram enabled only for BIG+BUY tier; others are dashboard-only.
-        if (bubbleData && !isDailyBubbleTierFired(ticker.instId, bubbleData.bubbleSize)) {
+        // No per-tier daily deduplication — fires every scan while percentile holds.
+        // Telegram enabled for BIG+BUY and BIG+SELL; others are dashboard-only.
+        if (bubbleData) {
           const direction = bubbleData.bubbleDirection === "MIXED" ? "BUY" : bubbleData.bubbleDirection;
           const signalType = `VOL_BUBBLE_${bubbleData.bubbleSize}_${direction}`;
 
@@ -440,7 +417,6 @@ async function scanOnce(): Promise<void> {
             volume24h: bubbleData.volume24h,
             telegramMsgId,
           });
-          markDailyBubbleTierFired(ticker.instId, bubbleData.bubbleSize);
           logger.info({ symbol: bubbleData.symbol, size: bubbleData.bubbleSize, direction, todayVol: bubbleData.todayVolumeUsd }, sendToTelegram ? "VOL_BUBBLE_DAILY BIG signal (TG enabled)" : "VOL_BUBBLE_DAILY signal (dashboard only)");
         }
 
