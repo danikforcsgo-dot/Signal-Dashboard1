@@ -112,6 +112,36 @@ export function getBubbleWatchlist(): BubbleWatchlistEntry[] {
   return [...bubbleWatchlistMap.values()].sort((a, b) => b.score - a.score);
 }
 
+// ── Bubble spam protection ────────────────────────────────────────────────────
+// Cooldown per (instId + signalType): suppress re-fires for 60 min.
+// Tier escalation (SMALL→MEDIUM, MEDIUM→BIG) always fires immediately —
+// tracked separately via the last-fired tier map.
+const BUBBLE_COOLDOWN_MS = 60 * 60 * 1000; // 60 minutes
+const SIZE_ORDER: Record<string, number> = { SMALL: 1, MEDIUM: 2, BIG: 3 };
+
+// key: instId → last signalType fired (e.g. "VOL_BUBBLE_SMALL_BUY")
+const bubbleLastTierMap = new Map<string, string>();
+// key: `${instId}|${signalType}` → timestamp of last fire
+const bubbleCooldownMap = new Map<string, number>();
+
+function isBubbleSuppressed(instId: string, signalType: string, bubbleSize: string): boolean {
+  const lastType = bubbleLastTierMap.get(instId);
+  // Always fire on first signal or tier escalation
+  if (!lastType) return false;
+  const lastSize = lastType.match(/SMALL|MEDIUM|BIG/)?.[0] ?? "SMALL";
+  if ((SIZE_ORDER[bubbleSize] ?? 1) > (SIZE_ORDER[lastSize] ?? 1)) return false;
+  // Same or lower tier: apply cooldown
+  const key = `${instId}|${signalType}`;
+  const lastFired = bubbleCooldownMap.get(key);
+  if (!lastFired) return false;
+  return Date.now() - lastFired < BUBBLE_COOLDOWN_MS;
+}
+
+function markBubbleFired(instId: string, signalType: string): void {
+  bubbleLastTierMap.set(instId, signalType);
+  bubbleCooldownMap.set(`${instId}|${signalType}`, Date.now());
+}
+
 // In-memory gainers list (≥+50% change over 24h) — refreshed every scan cycle
 const gainersMap = new Map<string, GainerEntry>();
 
@@ -135,6 +165,8 @@ function scheduleMidnightReset(): void {
     logger.info("Midnight UTC reset — clearing daily state");
     bubbleWatchlistMap.clear();
     gainersMap.clear();
+    bubbleCooldownMap.clear();
+    bubbleLastTierMap.clear();
     scheduleMidnightReset(); // schedule again for the next day
   }, ms);
 }
@@ -388,36 +420,43 @@ async function scanOnce(): Promise<void> {
         }
 
         // ── Volume Bubbles (daily percentile-based) ─────────────────────────
-        // No per-tier daily deduplication — fires every scan while percentile holds.
+        // Spam protection: 60-min cooldown per (coin + tier).
+        // Tier escalation (SMALL→MEDIUM, MEDIUM→BIG) always fires immediately.
         // Telegram enabled for BIG+BUY and BIG+SELL; others are dashboard-only.
         if (bubbleData) {
           const direction = bubbleData.bubbleDirection === "MIXED" ? "BUY" : bubbleData.bubbleDirection;
           const signalType = `VOL_BUBBLE_${bubbleData.bubbleSize}_${direction}`;
 
-          const sendToTelegram = bubbleData.bubbleSize === "BIG" && (direction === "BUY" || direction === "SELL");
-          let telegramMsgId: number | null = null;
+          if (isBubbleSuppressed(bubbleData.instId, signalType, bubbleData.bubbleSize)) {
+            // Within cooldown and same/lower tier — skip this scan silently
+          } else {
+            markBubbleFired(bubbleData.instId, signalType);
 
-          if (sendToTelegram) {
-            try {
-              telegramMsgId = await sendVolumeBubbleMessage(bubbleData);
-              logger.info({ symbol: bubbleData.symbol, size: bubbleData.bubbleSize, direction }, "VOL_BUBBLE_DAILY BIG signal sent to Telegram");
-            } catch (tgErr) {
-              logger.error({ err: tgErr, symbol: bubbleData.symbol }, "Failed to send bubble BIG signal to Telegram");
+            const sendToTelegram = bubbleData.bubbleSize === "BIG" && (direction === "BUY" || direction === "SELL");
+            let telegramMsgId: number | null = null;
+
+            if (sendToTelegram) {
+              try {
+                telegramMsgId = await sendVolumeBubbleMessage(bubbleData);
+                logger.info({ symbol: bubbleData.symbol, size: bubbleData.bubbleSize, direction }, "VOL_BUBBLE_DAILY BIG signal sent to Telegram");
+              } catch (tgErr) {
+                logger.error({ err: tgErr, symbol: bubbleData.symbol }, "Failed to send bubble BIG signal to Telegram");
+              }
             }
-          }
 
-          await db.insert(signalsTable).values({
-            instId: bubbleData.instId,
-            symbol: bubbleData.symbol,
-            signalType,
-            adrPct: adrData?.adrPct ?? 0,
-            price: bubbleData.currentPrice,
-            adrLevel: 0,
-            progressPct: Math.round(bubbleData.todayVolumeUsd),
-            volume24h: bubbleData.volume24h,
-            telegramMsgId,
-          });
-          logger.info({ symbol: bubbleData.symbol, size: bubbleData.bubbleSize, direction, todayVol: bubbleData.todayVolumeUsd }, sendToTelegram ? "VOL_BUBBLE_DAILY BIG signal (TG enabled)" : "VOL_BUBBLE_DAILY signal (dashboard only)");
+            await db.insert(signalsTable).values({
+              instId: bubbleData.instId,
+              symbol: bubbleData.symbol,
+              signalType,
+              adrPct: adrData?.adrPct ?? 0,
+              price: bubbleData.currentPrice,
+              adrLevel: 0,
+              progressPct: Math.round(bubbleData.todayVolumeUsd),
+              volume24h: bubbleData.volume24h,
+              telegramMsgId,
+            });
+            logger.info({ symbol: bubbleData.symbol, size: bubbleData.bubbleSize, direction, todayVol: bubbleData.todayVolumeUsd }, sendToTelegram ? "VOL_BUBBLE_DAILY BIG signal (TG enabled)" : "VOL_BUBBLE_DAILY signal (dashboard only)");
+          }
         }
 
       } catch (err) {
