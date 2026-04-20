@@ -4,7 +4,6 @@ import { SignalsFeed } from "@/components/SignalsFeed";
 import { CoinsGrid } from "@/components/CoinsGrid";
 import { BubbleFeed } from "@/components/BubbleFeed";
 import { GainersList } from "@/components/GainersList";
-import { ChatPanel } from "@/components/ChatPanel";
 
 type Tab = "adr" | "bubble";
 
@@ -60,7 +59,6 @@ export default function Dashboard() {
           </div>
         )}
       </main>
-      <ChatPanel />
     </div>
   );
 }

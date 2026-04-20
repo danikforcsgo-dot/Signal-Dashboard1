@@ -5,8 +5,6 @@ import coinsRouter from "./coins";
 import statusRouter from "./status";
 import watchlistRouter from "./watchlist";
 import gainersRouter from "./gainers";
-import chatRouter from "./chat";
-
 const router: IRouter = Router();
 
 router.use(healthRouter);
@@ -14,7 +12,6 @@ router.use("/signals", signalsRouter);
 router.use("/coins", coinsRouter);
 router.use("/bubble-watchlist", watchlistRouter);
 router.use("/gainers", gainersRouter);
-router.use("/chat", chatRouter);
 router.use(statusRouter);
 
 export default router;
