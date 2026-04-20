@@ -36,7 +36,6 @@ async function callTelegramAPI(method: string, body: Record<string, unknown>): P
   let res = await doRequest();
   let data = await res.json() as { ok: boolean; result?: unknown; description?: string; parameters?: { retry_after?: number } };
 
-  // On rate limit: wait exactly as long as Telegram asks, then retry once
   if (!data.ok && data.description?.includes("Too Many Requests")) {
     const retryAfter = (data.parameters?.retry_after ?? 10) * 1000 + 500;
     logger.warn({ retryAfter }, "Telegram rate limited, retrying after delay");
@@ -62,6 +61,8 @@ export async function verifyTelegramConnection(): Promise<boolean> {
   }
 }
 
+// ── Formatting helpers ────────────────────────────────────────────────────────
+
 function formatVolume(vol: number): string {
   if (vol >= 1_000_000_000) return (vol / 1_000_000_000).toFixed(1) + "B";
   if (vol >= 1_000_000) return (vol / 1_000_000).toFixed(1) + "M";
@@ -76,6 +77,19 @@ function formatPrice(price: number): string {
   return price.toFixed(8);
 }
 
+function formatTime(date: Date): string {
+  const months = ["янв","фев","мар","апр","май","июн","июл","авг","сен","окт","ноя","дек"];
+  const d = date.getUTCDate();
+  const m = months[date.getUTCMonth()];
+  const hh = String(date.getUTCHours()).padStart(2, "0");
+  const mm = String(date.getUTCMinutes()).padStart(2, "0");
+  return `${d} ${m}  ${hh}:${mm} UTC`;
+}
+
+function sep(): string {
+  return "┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄";
+}
+
 function getOKXSlug(symbol: string): string {
   return symbol.replace("/USDT.P", "").toLowerCase() + "-usdt-swap";
 }
@@ -85,6 +99,14 @@ function getTVSymbol(instId: string): string {
   return `OKX:${base}USDT.P`;
 }
 
+function links(symbol: string, instId: string): string {
+  const okxSlug = getOKXSlug(symbol);
+  const tvSymbol = getTVSymbol(instId);
+  return `<a href="https://www.tradingview.com/chart/?symbol=${tvSymbol}">📈 TradingView</a>  ·  <a href="https://www.okx.com/ru/trade-swap/${okxSlug}">🏦 OKX</a>`;
+}
+
+// ── ADR signal ────────────────────────────────────────────────────────────────
+
 export async function sendSignalMessage(coin: CoinADRData, signalType: "ADR_HIGH" | "ADR_LOW"): Promise<number | null> {
   if (!BOT_TOKEN || !CHAT_ID) {
     logger.warn("Telegram credentials not configured");
@@ -92,35 +114,30 @@ export async function sendSignalMessage(coin: CoinADRData, signalType: "ADR_HIGH
   }
 
   const isHigh = signalType === "ADR_HIGH";
-  const emoji = isHigh ? "🟢" : "🔴";
+  const headerEmoji = isHigh ? "🟢" : "🔴";
   const levelLabel = isHigh ? "ADR HIGH" : "ADR LOW";
+  const dirLabel = isHigh ? "ЛОНГ" : "ШОРТ";
   const level = isHigh ? coin.adrHighLevel : coin.adrLowLevel;
 
-  const now = new Date();
-  const timeStr = now.toLocaleString("ru-RU", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    timeZone: "UTC",
-  }) + " UTC";
+  const distPct = Math.abs(((coin.currentPrice - level) / level) * 100).toFixed(2);
+  const distSign = coin.currentPrice >= level ? "+" : "-";
 
-  const okxSlug = getOKXSlug(coin.symbol);
-  const tvSymbol = getTVSymbol(coin.instId);
-
-  const text = `${emoji} ${coin.symbol}
-Достигнут уровень ${levelLabel} 100%
-
-📊 ADR(14): ${coin.adrPct.toFixed(2)}%
-💰 Цена: ${formatPrice(coin.currentPrice)} USDT
-🎯 Уровень ADR: ${formatPrice(level)} USDT
-📦 Объём 24ч: ${formatVolume(coin.volume24h)} USDT
-⏰ ${timeStr}
-
-📈 <a href="https://www.tradingview.com/chart/?symbol=${tvSymbol}">TradingView · ${coin.symbol}</a>
-🏦 <a href="https://www.okx.com/ru/trade-swap/${okxSlug}">OKX · ${coin.symbol}</a>`;
+  const text = [
+    `${headerEmoji} <b>${levelLabel} · ${coin.symbol}</b>`,
+    `Цена достигла ${isHigh ? "верхней" : "нижней"} границы дневного диапазона`,
+    ``,
+    sep(),
+    `💰 Цена:      <b>${formatPrice(coin.currentPrice)} USDT</b>`,
+    `🎯 ${levelLabel}:  <b>${formatPrice(level)} USDT</b>  (${distSign}${distPct}%)`,
+    `📊 ADR(14):   ${coin.adrPct.toFixed(2)}%`,
+    `📦 Объём 24ч: ${formatVolume(coin.volume24h)} USDT`,
+    sep(),
+    `⚡ Сигнал: <b>${dirLabel}</b>`,
+    `🕐 ${formatTime(new Date())}`,
+    sep(),
+    ``,
+    links(coin.symbol, coin.instId),
+  ].join("\n");
 
   try {
     const result = await callTelegramAPI("sendMessage", {
@@ -129,7 +146,6 @@ export async function sendSignalMessage(coin: CoinADRData, signalType: "ADR_HIGH
       parse_mode: "HTML",
       disable_web_page_preview: true,
     }) as { message_id: number };
-
     telegramConnected = true;
     logger.info({ symbol: coin.symbol, signalType }, "Signal sent to Telegram");
     return result.message_id;
@@ -140,32 +156,31 @@ export async function sendSignalMessage(coin: CoinADRData, signalType: "ADR_HIGH
   }
 }
 
+// ── Volume spike ──────────────────────────────────────────────────────────────
+
 export async function sendVolumeSpikeMessage(data: VolumeSpikeData): Promise<number | null> {
   if (!BOT_TOKEN || !CHAT_ID) return null;
 
-  const now = new Date();
-  const timeStr = now.toLocaleString("ru-RU", {
-    day: "2-digit", month: "2-digit", year: "numeric",
-    hour: "2-digit", minute: "2-digit", second: "2-digit",
-    timeZone: "UTC",
-  }) + " UTC";
-
-  const direction = data.priceChange5m >= 0 ? "📈" : "📉";
+  const isUp = data.priceChange5m >= 0;
+  const dirEmoji = isUp ? "📈" : "📉";
   const changeStr = (data.priceChange5m >= 0 ? "+" : "") + data.priceChange5m.toFixed(2) + "%";
-  const okxSlug = getOKXSlug(data.symbol);
-  const tvSymbol = getTVSymbol(data.instId);
 
-  const text = `🔊 ОБЪЁМ: ${data.symbol}
-Всплеск объёма за 5 мин × ${data.spikeRatio.toFixed(1)}x
-
-${direction} Цена: ${formatPrice(data.currentPrice)} USDT (${changeStr} за 5м)
-📊 Объём 5м: ${formatVolume(data.volume5m)} USDT
-📉 Средний 5м: ${formatVolume(data.avgVolume5m)} USDT
-📦 Объём 24ч: ${formatVolume(data.volume24h)} USDT
-⏰ ${timeStr}
-
-📈 <a href="https://www.tradingview.com/chart/?symbol=${tvSymbol}">TradingView · ${data.symbol}</a>
-🏦 <a href="https://www.okx.com/ru/trade-swap/${okxSlug}">OKX · ${data.symbol}</a>`;
+  const text = [
+    `🔊 <b>ВСПЛЕСК ОБЪЁМА · ${data.symbol}</b>`,
+    `Объём за 5м вырос в <b>×${data.spikeRatio.toFixed(1)}</b> раза`,
+    ``,
+    sep(),
+    `💰 Цена:       <b>${formatPrice(data.currentPrice)} USDT</b>`,
+    `${dirEmoji} Изм. 5м:   <b>${changeStr}</b>`,
+    sep(),
+    `📊 Объём 5м:   <b>${formatVolume(data.volume5m)} USDT</b>  ×${data.spikeRatio.toFixed(1)}x`,
+    `📉 Средний 5м: ${formatVolume(data.avgVolume5m)} USDT`,
+    `📦 Объём 24ч:  ${formatVolume(data.volume24h)} USDT`,
+    sep(),
+    `🕐 ${formatTime(new Date())}`,
+    ``,
+    links(data.symbol, data.instId),
+  ].join("\n");
 
   try {
     const result = await callTelegramAPI("sendMessage", {
@@ -184,37 +199,38 @@ ${direction} Цена: ${formatPrice(data.currentPrice)} USDT (${changeStr} за
   }
 }
 
+// ── Volume breakout ───────────────────────────────────────────────────────────
+
 export async function sendVolumeBreakoutMessage(data: VolumeSpikeData, adr: CoinADRData, direction: "HIGH" | "LOW"): Promise<number | null> {
   if (!BOT_TOKEN || !CHAT_ID) return null;
 
-  const now = new Date();
-  const timeStr = now.toLocaleString("ru-RU", {
-    day: "2-digit", month: "2-digit", year: "numeric",
-    hour: "2-digit", minute: "2-digit", second: "2-digit",
-    timeZone: "UTC",
-  }) + " UTC";
-
   const isHigh = direction === "HIGH";
-  const emoji = isHigh ? "🚀" : "💥";
+  const headerEmoji = isHigh ? "🚀" : "💥";
   const levelLabel = isHigh ? "ADR HIGH" : "ADR LOW";
+  const dirLabel = isHigh ? "ЛОНГ" : "ШОРТ";
   const level = isHigh ? adr.adrHighLevel : adr.adrLowLevel;
-  const arrow = isHigh ? "↑" : "↓";
-  const rangeProgress = adr.progressToHigh + adr.progressToLow;
-  const okxSlug = getOKXSlug(data.symbol);
-  const tvSymbol = getTVSymbol(data.instId);
 
-  const text = `${emoji} ПРОБОЙ ОБЪЁМА: ${data.symbol}
-Всплеск × ${data.spikeRatio.toFixed(1)}x + цена у уровня ${levelLabel} ${arrow}
+  const distPct = Math.abs(((data.currentPrice - level) / level) * 100).toFixed(2);
+  const distSign = data.currentPrice >= level ? "+" : "-";
 
-💰 Цена: ${formatPrice(data.currentPrice)} USDT
-🎯 ${levelLabel}: ${formatPrice(level)} USDT
-📊 ADR(14): ${adr.adrPct.toFixed(2)}% · Progress: ${rangeProgress.toFixed(0)}%
-📊 Объём 5м: ${formatVolume(data.volume5m)} USDT (× ${data.spikeRatio.toFixed(1)}x)
-📦 Объём 24ч: ${formatVolume(data.volume24h)} USDT
-⏰ ${timeStr}
-
-📈 <a href="https://www.tradingview.com/chart/?symbol=${tvSymbol}">TradingView · ${data.symbol}</a>
-🏦 <a href="https://www.okx.com/ru/trade-swap/${okxSlug}">OKX · ${data.symbol}</a>`;
+  const text = [
+    `${headerEmoji} <b>ПРОБОЙ + ОБЪЁМ · ${data.symbol}</b>`,
+    `Всплеск ×${data.spikeRatio.toFixed(1)}x в момент подхода к уровню ${levelLabel}`,
+    ``,
+    sep(),
+    `💰 Цена:      <b>${formatPrice(data.currentPrice)} USDT</b>`,
+    `🎯 ${levelLabel}: <b>${formatPrice(level)} USDT</b>  (${distSign}${distPct}%)`,
+    `📊 ADR(14):   ${adr.adrPct.toFixed(2)}%`,
+    sep(),
+    `📊 Объём 5м:  <b>${formatVolume(data.volume5m)} USDT</b>  ×${data.spikeRatio.toFixed(1)}x`,
+    `📦 Объём 24ч: ${formatVolume(data.volume24h)} USDT`,
+    sep(),
+    `⚡ Сигнал: <b>${dirLabel}</b>`,
+    `🕐 ${formatTime(new Date())}`,
+    sep(),
+    ``,
+    links(data.symbol, data.instId),
+  ].join("\n");
 
   try {
     const result = await callTelegramAPI("sendMessage", {
@@ -233,51 +249,63 @@ export async function sendVolumeBreakoutMessage(data: VolumeSpikeData, adr: Coin
   }
 }
 
+// ── Volume bubble ─────────────────────────────────────────────────────────────
+
 export async function sendVolumeBubbleMessage(data: VolumeBubbleData): Promise<number | null> {
   if (!BOT_TOKEN || !CHAT_ID) return null;
 
-  const sizeLabel: Record<string, string> = { SMALL: "малый", MEDIUM: "средний", BIG: "большой" };
-  const sizeBubbles: Record<string, string> = { SMALL: "🫧", MEDIUM: "🫧🫧", BIG: "🫧🫧🫧" };
-  const pctLabel: Record<string, string> = { SMALL: "топ 25%", MEDIUM: "топ 10%", BIG: "топ 3%" };
+  const isBuy = data.bubbleDirection !== "SELL";
+  const dirEmoji = isBuy ? "📈" : "📉";
+  const dirLabel = isBuy ? "ПОКУПКА" : "ПРОДАЖА";
 
-  const isBuy = data.bubbleDirection === "BUY";
-  const isMixed = data.bubbleDirection === "MIXED";
-  const dirEmoji = isBuy ? "📈" : isMixed ? "↔️" : "📉";
-  const dirLabel = isBuy ? "ПОКУПКА" : isMixed ? "НЕЙТРАЛЬНО" : "ПРОДАЖА";
-  const headerEmoji = data.bubbleSize === "BIG"
-    ? (isBuy ? "🚀" : "💀")
-    : (isBuy ? "🟢" : "🔴");
+  const sizeRu: Record<string, string> = { SMALL: "МАЛЫЙ", MEDIUM: "СРЕДНИЙ", BIG: "БОЛЬШОЙ" };
+  const sizeRank: Record<string, string> = { SMALL: "топ 25%", MEDIUM: "топ 10%", BIG: "топ 3%" };
+  const sizeDots: Record<string, string> = { SMALL: "●○○", MEDIUM: "●●○", BIG: "●●●" };
 
-  const now = new Date();
-  const timeStr = now.toLocaleString("ru-RU", {
-    day: "2-digit", month: "2-digit", year: "numeric",
-    hour: "2-digit", minute: "2-digit", second: "2-digit",
-    timeZone: "UTC",
-  }) + " UTC";
+  // Header depends on projected vs actual
+  let headerEmoji: string;
+  let headerTitle: string;
+  let subtitle: string;
 
-  const okxSlug = getOKXSlug(data.symbol);
-  const tvSymbol = getTVSymbol(data.instId);
+  if (data.isProjected) {
+    headerEmoji = isBuy ? "⚡" : "⚡";
+    headerTitle = `РАННИЙ ПУЗЫРЬ · ${sizeRu[data.bubbleSize]} ${dirLabel}`;
+    subtitle = `Темп объёма проецирует ${sizeRank[data.bubbleSize]} к концу дня`;
+  } else {
+    headerEmoji = data.bubbleSize === "BIG" ? (isBuy ? "🚀" : "💀") : (isBuy ? "🟢" : "🔴");
+    headerTitle = `ПУЗЫРЬ ОБЪЁМА · ${sizeRu[data.bubbleSize]} ${dirLabel}`;
+    subtitle = `Объём дня в ${sizeRank[data.bubbleSize]} исторических значений`;
+  }
 
   const priceDiff = data.currentPrice - data.prevClose;
-  const priceDiffPct = ((priceDiff / data.prevClose) * 100).toFixed(2);
-  const priceChangeStr = priceDiff >= 0
-    ? `+${priceDiffPct}% от закрытия вчера`
-    : `${priceDiffPct}% от закрытия вчера`;
+  const priceDiffPct = ((priceDiff / data.prevClose) * 100);
+  const priceDiffStr = (priceDiffPct >= 0 ? "+" : "") + priceDiffPct.toFixed(2) + "%";
 
-  const projLine = data.isProjected && data.projectedDailyVol && data.hoursIntoDay
-    ? `📐 РАННИЙ СИГНАЛ · прогноз за день: ${formatVolume(data.projectedDailyVol)} USDT (через ${data.hoursIntoDay.toFixed(1)}ч)`
-    : null;
+  const lines: string[] = [
+    `${headerEmoji} <b>${headerTitle}</b>`,
+    `${data.symbol}  ${sizeDots[data.bubbleSize]}`,
+    subtitle,
+    ``,
+    sep(),
+    `💰 Цена:       <b>${formatPrice(data.currentPrice)} USDT</b>`,
+    `${dirEmoji} Vs вчера:  <b>${priceDiffStr}</b>`,
+    sep(),
+  ];
 
-  const text = `${headerEmoji} ${sizeBubbles[data.bubbleSize]} ДНЕВНОЙ ПУЗЫРЬ [${sizeLabel[data.bubbleSize].toUpperCase()}] — ${data.symbol}${data.isProjected ? " ⚡" : ""}
-${dirEmoji} ${dirLabel} · ${pctLabel[data.bubbleSize]}
-${projLine ? `\n${projLine}\n` : ""}
-💰 Цена: ${formatPrice(data.currentPrice)} USDT (${priceChangeStr})
-📊 Объём сегодня: ${formatVolume(data.todayVolumeUsd)} USDT
-📦 Объём 24ч: ${formatVolume(data.volume24h)} USDT
-⏰ ${timeStr}
+  if (data.isProjected && data.projectedDailyVol && data.hoursIntoDay) {
+    lines.push(`📊 Объём за ${data.hoursIntoDay.toFixed(1)}ч: <b>${formatVolume(data.todayVolumeUsd)} USDT</b>`);
+    lines.push(`📐 Прогноз/день:  <b>~${formatVolume(data.projectedDailyVol)} USDT</b>`);
+  } else {
+    lines.push(`📊 Объём сегодня: <b>${formatVolume(data.todayVolumeUsd)} USDT</b>`);
+  }
 
-📈 <a href="https://www.tradingview.com/chart/?symbol=${tvSymbol}">TradingView · ${data.symbol}</a>
-🏦 <a href="https://www.okx.com/ru/trade-swap/${okxSlug}">OKX · ${data.symbol}</a>`;
+  lines.push(`📦 Объём 24ч:     ${formatVolume(data.volume24h)} USDT`);
+  lines.push(sep());
+  lines.push(`🕐 ${formatTime(new Date())}`);
+  lines.push(``);
+  lines.push(links(data.symbol, data.instId));
+
+  const text = lines.join("\n");
 
   try {
     const result = await callTelegramAPI("sendMessage", {
@@ -302,7 +330,8 @@ export async function sendTestMessage(): Promise<boolean> {
   try {
     await callTelegramAPI("sendMessage", {
       chat_id: CHAT_ID,
-      text: "✅ Telegram Signal Bot — тест подключения успешен!\n\nБот запущен и готов отправлять сигналы.",
+      text: "✅ <b>Signal Bot</b> — подключение активно\nБот запущен и отправляет сигналы OKX Perps",
+      parse_mode: "HTML",
     });
     telegramConnected = true;
     return true;
