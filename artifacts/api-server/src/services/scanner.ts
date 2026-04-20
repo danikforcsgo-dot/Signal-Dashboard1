@@ -417,15 +417,15 @@ async function scanOnce(): Promise<void> {
           const direction = bubbleData.bubbleDirection === "MIXED" ? "BUY" : bubbleData.bubbleDirection;
           const signalType = `VOL_BUBBLE_${bubbleData.bubbleSize}_${direction}`;
 
-          const isBigBuy = bubbleData.bubbleSize === "BIG" && direction === "BUY";
+          const sendToTelegram = bubbleData.bubbleSize === "BIG" && (direction === "BUY" || direction === "SELL");
           let telegramMsgId: number | null = null;
 
-          if (isBigBuy) {
+          if (sendToTelegram) {
             try {
               telegramMsgId = await sendVolumeBubbleMessage(bubbleData);
-              logger.info({ symbol: bubbleData.symbol, size: bubbleData.bubbleSize, direction }, "VOL_BUBBLE_DAILY BIG·BUY sent to Telegram");
+              logger.info({ symbol: bubbleData.symbol, size: bubbleData.bubbleSize, direction }, "VOL_BUBBLE_DAILY BIG signal sent to Telegram");
             } catch (tgErr) {
-              logger.error({ err: tgErr, symbol: bubbleData.symbol }, "Failed to send bubble BIG·BUY to Telegram");
+              logger.error({ err: tgErr, symbol: bubbleData.symbol }, "Failed to send bubble BIG signal to Telegram");
             }
           }
 
@@ -441,7 +441,7 @@ async function scanOnce(): Promise<void> {
             telegramMsgId,
           });
           markDailyBubbleTierFired(ticker.instId, bubbleData.bubbleSize);
-          logger.info({ symbol: bubbleData.symbol, size: bubbleData.bubbleSize, direction, todayVol: bubbleData.todayVolumeUsd }, isBigBuy ? "VOL_BUBBLE_DAILY BIG·BUY signal (TG enabled)" : "VOL_BUBBLE_DAILY signal (dashboard only)");
+          logger.info({ symbol: bubbleData.symbol, size: bubbleData.bubbleSize, direction, todayVol: bubbleData.todayVolumeUsd }, sendToTelegram ? "VOL_BUBBLE_DAILY BIG signal (TG enabled)" : "VOL_BUBBLE_DAILY signal (dashboard only)");
         }
 
       } catch (err) {
