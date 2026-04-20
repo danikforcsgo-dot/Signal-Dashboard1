@@ -262,50 +262,28 @@ export async function sendVolumeBubbleMessage(data: VolumeBubbleData): Promise<n
   const sizeRank: Record<string, string> = { SMALL: "топ 25%", MEDIUM: "топ 10%", BIG: "топ 3%" };
   const sizeDots: Record<string, string> = { SMALL: "●○○", MEDIUM: "●●○", BIG: "●●●" };
 
-  // Header depends on projected vs actual
-  let headerEmoji: string;
-  let headerTitle: string;
-  let subtitle: string;
-
-  if (data.isProjected) {
-    headerEmoji = isBuy ? "⚡" : "⚡";
-    headerTitle = `РАННИЙ ПУЗЫРЬ · ${sizeRu[data.bubbleSize]} ${dirLabel}`;
-    subtitle = `Темп объёма проецирует ${sizeRank[data.bubbleSize]} к концу дня`;
-  } else {
-    headerEmoji = data.bubbleSize === "BIG" ? (isBuy ? "🚀" : "💀") : (isBuy ? "🟢" : "🔴");
-    headerTitle = `ПУЗЫРЬ ОБЪЁМА · ${sizeRu[data.bubbleSize]} ${dirLabel}`;
-    subtitle = `Объём дня в ${sizeRank[data.bubbleSize]} исторических значений`;
-  }
+  const headerEmoji = data.bubbleSize === "BIG" ? (isBuy ? "🚀" : "💀") : (isBuy ? "🟢" : "🔴");
 
   const priceDiff = data.currentPrice - data.prevClose;
   const priceDiffPct = ((priceDiff / data.prevClose) * 100);
   const priceDiffStr = (priceDiffPct >= 0 ? "+" : "") + priceDiffPct.toFixed(2) + "%";
 
-  const lines: string[] = [
-    `${headerEmoji} <b>${headerTitle}</b>`,
+  const text = [
+    `${headerEmoji} <b>ПУЗЫРЬ ОБЪЁМА · ${sizeRu[data.bubbleSize]} ${dirLabel}</b>`,
     `${data.symbol}  ${sizeDots[data.bubbleSize]}`,
-    subtitle,
+    `Объём дня в ${sizeRank[data.bubbleSize]} исторических значений`,
     ``,
     sep(),
-    `💰 Цена:       <b>${formatPrice(data.currentPrice)} USDT</b>`,
-    `${dirEmoji} Vs вчера:  <b>${priceDiffStr}</b>`,
+    `💰 Цена:          <b>${formatPrice(data.currentPrice)} USDT</b>`,
+    `${dirEmoji} Vs вчера:     <b>${priceDiffStr}</b>`,
     sep(),
-  ];
-
-  if (data.isProjected && data.projectedDailyVol && data.hoursIntoDay) {
-    lines.push(`📊 Объём за ${data.hoursIntoDay.toFixed(1)}ч: <b>${formatVolume(data.todayVolumeUsd)} USDT</b>`);
-    lines.push(`📐 Прогноз/день:  <b>~${formatVolume(data.projectedDailyVol)} USDT</b>`);
-  } else {
-    lines.push(`📊 Объём сегодня: <b>${formatVolume(data.todayVolumeUsd)} USDT</b>`);
-  }
-
-  lines.push(`📦 Объём 24ч:     ${formatVolume(data.volume24h)} USDT`);
-  lines.push(sep());
-  lines.push(`🕐 ${formatTime(new Date())}`);
-  lines.push(``);
-  lines.push(links(data.symbol, data.instId));
-
-  const text = lines.join("\n");
+    `📊 Объём сегодня: <b>${formatVolume(data.todayVolumeUsd)} USDT</b>`,
+    `📦 Объём 24ч:     ${formatVolume(data.volume24h)} USDT`,
+    sep(),
+    `🕐 ${formatTime(new Date())}`,
+    ``,
+    links(data.symbol, data.instId),
+  ].join("\n");
 
   try {
     const result = await callTelegramAPI("sendMessage", {
