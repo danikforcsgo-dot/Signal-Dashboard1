@@ -167,7 +167,7 @@ export interface VolumeBubbleData {
 }
 
 export interface BubbleWatchlistInfo {
-  daysSinceLastBig: number;  // days since volume exceeded P75; 999 = not in history window
+  daysSinceLastBig: number;  // days of silence (0=today elevated, 1=yesterday was last big, 999=not in window)
   todayVolumeUsd: number;
   todayRatioPct: number;     // today vol / P75 * 100
   p75: number;
@@ -218,15 +218,22 @@ export async function fetchVolumeBubbleData(instId: string, currentPrice: number
     const SMALL_PCT = 75, MEDIUM_PCT = 90, BIG_PCT = 97;
     const consensus = (s: boolean, m: boolean, l: boolean) => (s ? 1 : 0) + (m ? 1 : 0) + (l ? 1 : 0) >= 2;
 
-    // Use midH P75 as the primary silence reference (50-bar window)
-    const p75ref = percentileLinearInterp(midH, SMALL_PCT);
+    // Use longH P75 as the silence reference — 100-bar window is more stable and less
+    // affected by recent outliers inflating the threshold (falls back to midH if <100 bars)
+    const p75ref = percentileLinearInterp(longH, SMALL_PCT);
 
-    // Days since last confirmed daily bar whose volume exceeded P75 (newest bar = index 0)
+    // Days since last elevated volume (P75 of 100-bar window).
+    // confirmed[0] = yesterday (index = days of silence before today).
+    // Today's unconfirmed candle counts as day-0 if already elevated.
     let daysSinceLastBig = 999;
-    for (let i = 0; i < confirmed.length; i++) {
-      if (parseFloat(confirmed[i].volCcyQuote) >= p75ref) {
-        daysSinceLastBig = i;
-        break;
+    if (todayVol >= p75ref) {
+      daysSinceLastBig = 0; // today is already elevated
+    } else {
+      for (let i = 0; i < confirmed.length; i++) {
+        if (parseFloat(confirmed[i].volCcyQuote) >= p75ref) {
+          daysSinceLastBig = i + 1; // confirmed[0]=yesterday → 1 day of silence
+          break;
+        }
       }
     }
 
