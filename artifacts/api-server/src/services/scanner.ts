@@ -294,10 +294,14 @@ async function scanOnce(): Promise<void> {
           const rangeProgress = adrData.progressToHigh + adrData.progressToLow;
           const isHighDominant = adrData.progressToHigh >= adrData.progressToLow;
 
+          // Only send Telegram from the production deployment.
+          // Dev server (NODE_ENV=development) runs in parallel with prod and must not send.
+          const tgEnabled = process.env.NODE_ENV === "production";
+
           if (rangeProgress >= SIGNAL_THRESHOLD) {
             if (isHighDominant && !signalSentHigh) {
               try {
-                const msgId = await sendSignalMessage(adrData, "ADR_HIGH");
+                const msgId = tgEnabled ? await sendSignalMessage(adrData, "ADR_HIGH") : null;
                 await db.insert(signalsTable).values({
                   instId: adrData.instId,
                   symbol: adrData.symbol,
@@ -311,14 +315,14 @@ async function scanOnce(): Promise<void> {
                 });
                 signalSentHigh = true;
                 signalSentHighAt = new Date();
+                if (tgEnabled) logger.info({ symbol: adrData.symbol }, "ADR_HIGH signal sent to Telegram (production)");
+                else logger.info({ symbol: adrData.symbol }, "ADR_HIGH signal logged (dev — Telegram skipped)");
               } catch (tgErr) {
                 logger.error({ err: tgErr, instId: ticker.instId }, "Failed to send Telegram signal (ADR_HIGH)");
-                // signalSentHigh stays false — will retry next scan
-                // But the DB upsert below still runs, persisting the reset state
               }
             } else if (!isHighDominant && !signalSentLow) {
               try {
-                const msgId = await sendSignalMessage(adrData, "ADR_LOW");
+                const msgId = tgEnabled ? await sendSignalMessage(adrData, "ADR_LOW") : null;
                 await db.insert(signalsTable).values({
                   instId: adrData.instId,
                   symbol: adrData.symbol,
@@ -332,9 +336,10 @@ async function scanOnce(): Promise<void> {
                 });
                 signalSentLow = true;
                 signalSentLowAt = new Date();
+                if (tgEnabled) logger.info({ symbol: adrData.symbol }, "ADR_LOW signal sent to Telegram (production)");
+                else logger.info({ symbol: adrData.symbol }, "ADR_LOW signal logged (dev — Telegram skipped)");
               } catch (tgErr) {
                 logger.error({ err: tgErr, instId: ticker.instId }, "Failed to send Telegram signal (ADR_LOW)");
-                // signalSentLow stays false — will retry next scan
               }
             }
           }
