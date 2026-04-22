@@ -14,6 +14,7 @@ export const signalsTable = pgTable("signals", {
   volume24h: real("volume_24h").notNull(),
   sentAt: timestamp("sent_at", { withTimezone: true }).defaultNow().notNull(),
   telegramMsgId: integer("telegram_msg_id"),
+  silenceDays: integer("silence_days"), // days of silence before signal fired; null = coin was not in silence watchlist
 });
 
 export const insertSignalSchema = createInsertSchema(signalsTable).omit({ id: true, sentAt: true });

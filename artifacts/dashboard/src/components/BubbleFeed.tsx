@@ -3,7 +3,7 @@ import { format } from "date-fns";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { useState, useCallback } from "react";
-import { X, ExternalLink, TrendingUp, TrendingDown, Clock } from "lucide-react";
+import { X, ExternalLink, TrendingUp, TrendingDown, Clock, Moon } from "lucide-react";
 
 function BubbleDots({ count, isBuy }: { count: 1 | 2 | 3; isBuy: boolean }) {
   const color = isBuy ? "bg-emerald-400" : "bg-red-400";
@@ -47,6 +47,7 @@ interface Signal {
   progressPct: number;
   volume24h: number;
   sentAt: string;
+  silenceDays?: number | null;
 }
 interface SignalsResponse {
   signals: Signal[];
@@ -424,10 +425,16 @@ export function BubbleFeed() {
                     ? "border-emerald-500/40 text-emerald-400 bg-emerald-500/10"
                     : "border-red-500/40 text-red-400 bg-red-500/10";
 
+                  const fromSilence = signal.silenceDays != null && signal.silenceDays >= 3;
+
                   return (
                     <div key={signal.id}
-                      className={`relative rounded-md border border-l-4 transition-colors group ${borderL} ${borderColor} ${rowBg}`}
+                      className={`relative rounded-md border border-l-4 transition-colors group ${borderL} ${fromSilence ? "border-amber-400/50" : borderColor} ${rowBg} ${fromSilence ? "shadow-[0_0_8px_0_rgba(251,191,36,0.12)]" : ""}`}
                     >
+                      {/* Silence glow strip */}
+                      {fromSilence && (
+                        <div className="absolute inset-0 rounded-md pointer-events-none ring-1 ring-amber-400/25" />
+                      )}
                       <div className="px-3 py-2.5">
                         <div className="flex items-center justify-between mb-1.5">
                           <div className="flex items-center gap-2 min-w-0">
@@ -443,6 +450,12 @@ export function BubbleFeed() {
                               {isBuy ? "BUY" : "SELL"}
                             </div>
                             <span className="text-[9px] text-muted-foreground font-mono flex-shrink-0">{meta.pctLabel}</span>
+                            {fromSilence && (
+                              <span className="flex items-center gap-0.5 text-[9px] font-bold text-amber-400 bg-amber-400/10 border border-amber-400/30 rounded px-1 py-0 h-4 flex-shrink-0">
+                                <Moon size={8} className="flex-shrink-0" />
+                                {signal.silenceDays}д
+                              </span>
+                            )}
                           </div>
                           <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
                             <span className="text-[9px] text-muted-foreground font-mono">

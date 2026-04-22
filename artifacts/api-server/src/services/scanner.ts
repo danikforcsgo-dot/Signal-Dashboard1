@@ -449,6 +449,10 @@ async function scanOnce(): Promise<void> {
               }
             }
 
+            // Tag signal with silence days if coin was in the долгая-тишина watchlist
+            const wlDays = bubbleAnalysis?.watchlist?.daysSinceLastBig ?? 0;
+            const silenceDays = wlDays >= 3 ? wlDays : null;
+
             await db.insert(signalsTable).values({
               instId: bubbleData.instId,
               symbol: bubbleData.symbol,
@@ -459,6 +463,7 @@ async function scanOnce(): Promise<void> {
               progressPct: Math.round(bubbleData.todayVolumeUsd),
               volume24h: bubbleData.volume24h,
               telegramMsgId,
+              silenceDays,
             });
             logger.info({ symbol: bubbleData.symbol, size: bubbleData.bubbleSize, direction, todayVol: bubbleData.todayVolumeUsd }, sendToTelegram ? "VOL_BUBBLE_DAILY BIG signal (TG enabled)" : "VOL_BUBBLE_DAILY signal (dashboard only)");
           }
