@@ -432,7 +432,7 @@ async function scanOnce(): Promise<void> {
           } else {
             markBubbleFired(bubbleData.instId, signalType);
 
-            const sendToTelegram = bubbleData.bubbleSize === "BIG" && (direction === "BUY" || direction === "SELL");
+            const sendToTelegram = false; // Telegram notifications disabled for bubble bot
             let telegramMsgId: number | null = null;
 
             if (sendToTelegram) {
