@@ -493,6 +493,7 @@ export async function startScanner(): Promise<void> {
   const run = async () => {
     try {
       await scanOnce();
+      state.errorCount = 0;
       state.lastError = null;
     } catch (err) {
       state.errorCount++;
