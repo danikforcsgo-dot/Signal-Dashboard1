@@ -288,11 +288,26 @@ async function scanOnce(): Promise<void> {
           let signalSentHighAt: Date | null = existing?.signalSentHighAt ?? null;
           let signalSentLowAt: Date | null = existing?.signalSentLowAt ?? null;
 
-          if (shouldResetSignals(signalSentHighAt)) { signalSentHigh = false; signalSentHighAt = null; }
-          if (shouldResetSignals(signalSentLowAt))  { signalSentLow  = false; signalSentLowAt  = null; }
+          let resetHigh = false;
+          let resetLow = false;
+          if (shouldResetSignals(signalSentHighAt)) { signalSentHigh = false; signalSentHighAt = null; resetHigh = true; }
+          if (shouldResetSignals(signalSentLowAt))  { signalSentLow  = false; signalSentLowAt  = null; resetLow  = true; }
 
           const rangeProgress = adrData.progressToHigh + adrData.progressToLow;
           const isHighDominant = adrData.progressToHigh >= adrData.progressToLow;
+
+          // After a daily reset, if the coin is ALREADY past the threshold, pre-arm
+          // the "sent" flag so no signal fires without an actual intra-day crossing.
+          // This prevents a burst of signals right at 03:00 МСК from coins that were
+          // already above their ADR level before midnight.
+          if (resetHigh && rangeProgress >= SIGNAL_THRESHOLD && isHighDominant) {
+            signalSentHigh = true;
+            signalSentHighAt = new Date();
+          }
+          if (resetLow && rangeProgress >= SIGNAL_THRESHOLD && !isHighDominant) {
+            signalSentLow = true;
+            signalSentLowAt = new Date();
+          }
 
           // Only send Telegram from the production deployment.
           // Dev server (NODE_ENV=development) runs in parallel with prod and must not send.
