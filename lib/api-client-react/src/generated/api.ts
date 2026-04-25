@@ -653,3 +653,84 @@ export const useTestBot = <
 > => {
   return useMutation(getTestBotMutationOptions(options));
 };
+
+/**
+ * @summary Force a manual daily reset (clears cooldowns, watchlists, gainers)
+ */
+export const getResetBotUrl = () => {
+  return `/api/bot/reset`;
+};
+
+export const resetBot = async (
+  options?: RequestInit,
+): Promise<BotActionResult> => {
+  return customFetch<BotActionResult>(getResetBotUrl(), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getResetBotMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof resetBot>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof resetBot>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["resetBot"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof resetBot>>,
+    void
+  > = () => {
+    return resetBot(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ResetBotMutationResult = NonNullable<
+  Awaited<ReturnType<typeof resetBot>>
+>;
+
+export type ResetBotMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Force a manual daily reset (clears cooldowns, watchlists, gainers)
+ */
+export const useResetBot = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof resetBot>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof resetBot>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getResetBotMutationOptions(options));
+};

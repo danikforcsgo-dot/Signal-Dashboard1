@@ -131,6 +131,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/BotActionResult"
 
+  /bot/reset:
+    post:
+      operationId: resetBot
+      tags: [status]
+      summary: Force a manual daily reset (clears cooldowns, watchlists, gainers)
+      responses:
+        "200":
+          description: Reset completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotActionResult"
+
 components:
   schemas:
     HealthStatus:

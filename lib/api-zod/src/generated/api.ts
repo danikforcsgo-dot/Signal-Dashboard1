@@ -123,3 +123,11 @@ export const TestBotResponse = zod.object({
   success: zod.boolean(),
   message: zod.string(),
 });
+
+/**
+ * @summary Force a manual daily reset (clears cooldowns, watchlists, gainers)
+ */
+export const ResetBotResponse = zod.object({
+  success: zod.boolean(),
+  message: zod.string(),
+});

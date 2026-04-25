@@ -1,7 +1,7 @@
-import { useGetStatus, useStartBot, useStopBot, useTestBot } from "@workspace/api-client-react";
+import { useGetStatus, useStartBot, useStopBot, useTestBot, useResetBot } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Activity, Power, PowerOff, Send, Clock, AlertTriangle } from "lucide-react";
+import { Activity, Power, PowerOff, Send, Clock, AlertTriangle, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { ResetTimer } from "@/components/ResetTimer";
@@ -11,6 +11,7 @@ export function StatusBar() {
   const startBot = useStartBot();
   const stopBot = useStopBot();
   const testBot = useTestBot();
+  const resetBot = useResetBot();
   const { toast } = useToast();
 
   const handleStart = () => {
@@ -31,6 +32,14 @@ export function StatusBar() {
     testBot.mutate(undefined, {
       onSuccess: () => toast({ title: "Test sent" }),
       onError: () => toast({ title: "Failed to send", variant: "destructive" }),
+    });
+  };
+
+  const handleReset = () => {
+    if (!confirm("Принудительный сброс: очистит кулдауны, вотчлист тишины, гейнеры и сигнальные флаги. Продолжить?")) return;
+    resetBot.mutate(undefined, {
+      onSuccess: () => toast({ title: "Сброс выполнен", description: "Кулдауны и вотчлисты очищены" }),
+      onError: () => toast({ title: "Ошибка сброса", variant: "destructive" }),
     });
   };
 
@@ -94,6 +103,10 @@ export function StatusBar() {
         )}
 
         <div className="flex items-center gap-1.5 pl-3 border-l border-border">
+          <Button variant="outline" size="sm" onClick={handleReset} disabled={resetBot.isPending}
+            className="font-mono text-[10px] h-6 px-2 py-0 text-amber-400 border-amber-400/30 hover:bg-amber-400/10 hover:text-amber-300">
+            <RotateCcw className="w-3 h-3 mr-1" /> RESET
+          </Button>
           <Button variant="outline" size="sm" onClick={handleTest} disabled={testBot.isPending}
             className="font-mono text-[10px] h-6 px-2 py-0">
             <Send className="w-3 h-3 mr-1" /> TG

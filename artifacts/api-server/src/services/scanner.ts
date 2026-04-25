@@ -158,15 +158,20 @@ function getMsUntilNextMidnightUTC(): number {
   return nextMidnight.getTime() - now.getTime();
 }
 
+export function performDailyReset(): void {
+  logger.info("Daily reset — clearing all in-memory daily state");
+  bubbleWatchlistMap.clear();
+  gainersMap.clear();
+  bubbleCooldownMap.clear();
+  bubbleLastTierMap.clear();
+}
+
 function scheduleMidnightReset(): void {
   const ms = getMsUntilNextMidnightUTC();
   logger.info({ msUntilReset: ms, hoursUntilReset: (ms / 3_600_000).toFixed(2) }, "Bubble bot midnight reset scheduled");
   setTimeout(() => {
     logger.info("Midnight UTC reset — clearing daily state");
-    bubbleWatchlistMap.clear();
-    gainersMap.clear();
-    bubbleCooldownMap.clear();
-    bubbleLastTierMap.clear();
+    performDailyReset();
     scheduleMidnightReset(); // schedule again for the next day
   }, ms);
 }

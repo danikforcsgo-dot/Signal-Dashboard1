@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getScannerState, startScanner, stopScanner, SCAN_INTERVAL_SECONDS } from "../services/scanner";
+import { getScannerState, startScanner, stopScanner, performDailyReset, SCAN_INTERVAL_SECONDS } from "../services/scanner";
 import { isOkxConnected } from "../services/okx";
 import { isTelegramConnected, sendTestMessage } from "../services/telegram";
 
@@ -47,6 +47,11 @@ router.post("/bot/test", async (req, res) => {
     success: ok,
     message: ok ? "Test message sent successfully" : "Failed to send test message",
   });
+});
+
+router.post("/bot/reset", (req, res) => {
+  performDailyReset();
+  res.json({ success: true, message: "Daily state reset completed" });
 });
 
 export default router;
