@@ -151,6 +151,19 @@ export function getGainers(): GainerEntry[] {
 
 // ── Midnight UTC reset scheduler ─────────────────────────────────────────────
 // Fires once at 00:00 UTC (= 03:00 MSK) to clear bubble bot daily state.
+
+// Tracks the last time a daily reset was performed (midnight UTC reset only,
+// NOT set on server startup). Used to narrow the pre-arm window so that
+// mid-day server restarts don't block legitimate ADR signals.
+let lastDailyResetAt: Date | null = null;
+
+// Returns true only within 15 minutes of the last scheduled midnight reset.
+// This keeps pre-arm protection focused on the actual midnight burst window.
+function isWithinMidnightBurstWindow(): boolean {
+  if (!lastDailyResetAt) return false;
+  return Date.now() - lastDailyResetAt.getTime() < 15 * 60 * 1000;
+}
+
 function getMsUntilNextMidnightUTC(): number {
   const now = new Date();
   const nextMidnight = new Date();
@@ -164,6 +177,7 @@ export function performDailyReset(): void {
   gainersMap.clear();
   bubbleCooldownMap.clear();
   bubbleLastTierMap.clear();
+  lastDailyResetAt = new Date();
 }
 
 function scheduleMidnightReset(): void {
@@ -301,15 +315,15 @@ async function scanOnce(): Promise<void> {
           const rangeProgress = adrData.progressToHigh + adrData.progressToLow;
           const isHighDominant = adrData.progressToHigh >= adrData.progressToLow;
 
-          // After a daily reset, if the coin is ALREADY past the threshold, pre-arm
-          // the "sent" flag so no signal fires without an actual intra-day crossing.
-          // This prevents a burst of signals right at 03:00 МСК from coins that were
-          // already above their ADR level before midnight.
-          if (resetHigh && rangeProgress >= SIGNAL_THRESHOLD && isHighDominant) {
+          // After the scheduled midnight reset (00:00 UTC), if a coin is ALREADY past
+          // the threshold in the first 15 minutes, pre-arm it to prevent a burst of
+          // stale signals. This does NOT apply to mid-day server restarts — only the
+          // actual midnight reset triggers the burst-protection window.
+          if (resetHigh && rangeProgress >= SIGNAL_THRESHOLD && isHighDominant && isWithinMidnightBurstWindow()) {
             signalSentHigh = true;
             signalSentHighAt = new Date();
           }
-          if (resetLow && rangeProgress >= SIGNAL_THRESHOLD && !isHighDominant) {
+          if (resetLow && rangeProgress >= SIGNAL_THRESHOLD && !isHighDominant && isWithinMidnightBurstWindow()) {
             signalSentLow = true;
             signalSentLowAt = new Date();
           }
@@ -490,7 +504,7 @@ async function scanOnce(): Promise<void> {
         }
 
       } catch (err) {
-        logger.debug({ err, instId: ticker.instId }, "Error processing coin");
+        logger.warn({ err, instId: ticker.instId }, "Error processing coin — skipped this scan");
       }
     }));
 
